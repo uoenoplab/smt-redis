@@ -2420,6 +2420,7 @@ int createSocketAcceptHandler(connListener *sfd, aeFileProc *accept_handler) {
             for (j = j-1; j >= 0; j--) aeDeleteFileEvent(server.el, sfd->fd[j], AE_READABLE);
             return C_ERR;
         }
+serverLog(LL_NOTICE, "Create listener for socket fd=%d", sfd->fd[j]);
     }
     return C_OK;
 }
@@ -2795,6 +2796,17 @@ void initListeners(void) {
         listener->bindaddr = &server.unixsocket;
         listener->bindaddr_count = 1;
         listener->ct = connectionByType(CONN_TYPE_UNIX);
+        listener->priv = &server.unixsocketperm; /* Unix socket specified */
+    }
+    if (server.homasocket != 0) {
+        conn_index = connectionIndexByType(CONN_TYPE_HOMA);
+        if (conn_index < 0)
+            serverPanic("Failed finding connection listener of %s", CONN_TYPE_HOMA);
+        listener = &server.listeners[conn_index];
+        listener->bindaddr = &server.homasocket;
+        listener->bindaddr_count = 1;
+        listener->port = server.homasocket;
+        listener->ct = connectionByType(CONN_TYPE_HOMA);
         listener->priv = &server.unixsocketperm; /* Unix socket specified */
     }
 

@@ -64,6 +64,9 @@ int connTypeInitialize(void) {
     /* currently unix socket connection type is necessary  */
     serverAssert(RedisRegisterConnectionTypeUnix() == C_OK);
 
+    /* currently homa socket connection type is necessary  */
+    serverAssert(RedisRegisterConnectionTypeHoma() == C_OK);
+
     /* may fail if without BUILD_TLS=yes */
     RedisRegisterConnectionTypeTLS();
 
@@ -124,6 +127,17 @@ ConnectionType *connectionTypeUnix(void) {
 
     ct_unix = connectionByType(CONN_TYPE_UNIX);
     return ct_unix;
+}
+
+/* Cache Unix connection type, query it by string once */
+ConnectionType *connectionTypeHoma(void) {
+    static ConnectionType *ct_homa = NULL;
+
+    if (ct_homa != NULL)
+        return ct_homa;
+
+    ct_homa = connectionByType(CONN_TYPE_HOMA);
+    return ct_homa;
 }
 
 int connectionIndexByType(const char *typename) {
