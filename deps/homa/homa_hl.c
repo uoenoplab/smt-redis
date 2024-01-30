@@ -20,6 +20,7 @@ int init_recv_args(int sockfd, void* addr, socklen_t addrlen) {
         printf("Couldn't mmap buffer region: %s\n", strerror(errno));
         return -1;
     }
+    printf("Recv buf size: %ld\n", recv_buf_size);
 
     arg.start = recv_buf_region;
     arg.length = recv_buf_size;

@@ -789,6 +789,9 @@ int redisReconnect(redisContext *c) {
     if (c->connection_type == REDIS_CONN_TCP) {
         ret = redisContextConnectBindTcp(c, c->tcp.host, c->tcp.port,
                c->connect_timeout, c->tcp.source_addr);
+    } else if (c->connection_type == REDIS_CONN_HOMA) {
+        ret = redisContextConnectBindHoma(c, c->tcp.host, c->tcp.port,
+               c->connect_timeout, c->tcp.source_addr);
     } else if (c->connection_type == REDIS_CONN_UNIX) {
         ret = redisContextConnectUnix(c, c->unix_sock.path, c->connect_timeout);
     } else {
@@ -852,6 +855,11 @@ redisContext *redisConnectWithOptions(const redisOptions *options) {
     } else if (options->type == REDIS_CONN_UNIX) {
         redisContextConnectUnix(c, options->endpoint.unix_socket,
                                 options->connect_timeout);
+    } else if (options->type == REDIS_CONN_HOMA) {
+        printf("Connecting with Homa to %s:%d\n", options->endpoint.tcp.ip, options->endpoint.tcp.port);
+        redisContextConnectBindHoma(c, options->endpoint.tcp.ip,
+                                   options->endpoint.tcp.port, options->connect_timeout,
+                                   options->endpoint.tcp.source_addr);
     } else if (options->type == REDIS_CONN_USERFD) {
         c->fd = options->endpoint.fd;
         c->flags |= REDIS_CONNECTED;
@@ -937,6 +945,13 @@ redisContext *redisConnectFd(redisFD fd) {
     return redisConnectWithOptions(&options);
 }
 
+// connect homa socket
+redisContext *redisConnectHoma(const char *ip, int port) {
+    redisOptions options = {0};
+    REDIS_OPTIONS_SET_HOMA(&options, ip, port);
+    return redisConnectWithOptions(&options);
+}
+
 /* Set read/write timeout on a blocking socket. */
 int redisSetTimeout(redisContext *c, const struct timeval tv) {
     if (c->flags & REDIS_BLOCK)
@@ -971,7 +986,8 @@ redisPushFn *redisSetPushCallback(redisContext *c, redisPushFn *fn) {
  * After this function is called, you may use redisGetReplyFromReader to
  * see if there is a reply available. */
 int redisBufferRead(redisContext *c) {
-    char buf[1024*16];
+    //char buf[1024*16];
+    char buf[65536*16];
     int nread;
 
     /* Return early when the context has seen an error. */
@@ -979,6 +995,7 @@ int redisBufferRead(redisContext *c) {
         return REDIS_ERR;
 
     nread = c->funcs->read(c, buf, sizeof(buf));
+printf("redisBufferRead: read->nread=%d\n", nread);
     if (nread < 0) {
         return REDIS_ERR;
     }
@@ -1075,7 +1092,7 @@ int redisGetReply(redisContext *c, void **reply) {
             if (redisBufferWrite(c,&wdone) == REDIS_ERR)
                 return REDIS_ERR;
         } while (!wdone);
-
+printf("\nredisGetReply: finished redisBufferWrite\n");
         /* Read until there is a reply */
         do {
             if (redisBufferRead(c) == REDIS_ERR)
@@ -1084,6 +1101,7 @@ int redisGetReply(redisContext *c, void **reply) {
             if (redisNextInBandReplyFromReader(c,&aux) == REDIS_ERR)
                 return REDIS_ERR;
         } while (aux == NULL);
+printf("\nredisGetReply: finished redisBufferRead|redisNextInBandReplyFromReader: %s \n", (char*)aux);
     }
 
     /* Set reply or free it if we were passed NULL */

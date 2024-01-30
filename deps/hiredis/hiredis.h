@@ -147,6 +147,7 @@ void redisFreeSdsCommand(hisds cmd);
 enum redisConnectionType {
     REDIS_CONN_TCP,
     REDIS_CONN_UNIX,
+    REDIS_CONN_HOMA,
     REDIS_CONN_USERFD
 };
 
@@ -238,6 +239,12 @@ typedef struct {
         (opts)->free_privdata = dtor;                      \
     } while(0)
 
+#define REDIS_OPTIONS_SET_HOMA(opts, ip_, port_) do { \
+        (opts)->type = REDIS_CONN_HOMA;               \
+        (opts)->endpoint.tcp.ip = ip_;               \
+        (opts)->endpoint.tcp.port = port_;           \
+    } while(0)
+
 typedef struct redisContextFuncs {
     void (*close)(struct redisContext *);
     void (*free_privctx)(void *);
@@ -307,6 +314,7 @@ redisContext *redisConnectUnix(const char *path);
 redisContext *redisConnectUnixWithTimeout(const char *path, const struct timeval tv);
 redisContext *redisConnectUnixNonBlock(const char *path);
 redisContext *redisConnectFd(redisFD fd);
+redisContext *redisConnectHoma(const char *ip, int port);
 
 /**
  * Reconnect the given context using the saved information.

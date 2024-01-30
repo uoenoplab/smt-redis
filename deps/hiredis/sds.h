@@ -33,7 +33,8 @@
 #ifndef HIREDIS_SDS_H
 #define HIREDIS_SDS_H
 
-#define HI_SDS_MAX_PREALLOC (1024*1024)
+//#define HI_SDS_MAX_PREALLOC (1024*1024)
+#define HI_SDS_MAX_PREALLOC (65536*1024)
 #ifdef _MSC_VER
 typedef long long ssize_t;
 #define SSIZE_MAX (LLONG_MAX >> 1)

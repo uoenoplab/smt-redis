@@ -1368,6 +1368,7 @@ void acceptCommonHandler(connection *conn, int flags, char *ip) {
                       "Error accepting a client connection: %s (addr=%s laddr=%s)",
                       connGetLastError(conn), getClientPeerId(c), getClientSockname(c));
         freeClient(connGetPrivateData(conn));
+        serverLog(LL_NOTICE, "Accepted connection %s %s", getClientPeerId(c), getClientSockname(c));
         return;
     }
 }

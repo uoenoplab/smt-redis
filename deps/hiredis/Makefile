@@ -41,8 +41,8 @@ CXX:=$(shell sh -c 'type $${CXX%% *} >/dev/null 2>/dev/null && echo $(CXX) || ec
 OPTIMIZATION?=-O3
 WARNINGS=-Wall -Wextra -Werror -Wstrict-prototypes -Wwrite-strings -Wno-missing-field-initializers
 DEBUG_FLAGS?= -g -ggdb
-REAL_CFLAGS=$(OPTIMIZATION) -fPIC $(CPPFLAGS) $(CFLAGS) $(WARNINGS) $(DEBUG_FLAGS) $(PLATFORM_FLAGS)
-REAL_LDFLAGS=$(LDFLAGS)
+REAL_CFLAGS=$(OPTIMIZATION) -fPIC $(CPPFLAGS) $(CFLAGS) $(WARNINGS) $(DEBUG_FLAGS) $(PLATFORM_FLAGS) -I../homa
+REAL_LDFLAGS=$(LDFLAGS) ../homa/libhoma.a
 
 DYLIBSUFFIX=so
 STLIBSUFFIX=a
@@ -165,7 +165,7 @@ $(DYLIBNAME): $(OBJ)
 	$(DYLIB_MAKE_CMD) -o $(DYLIBNAME) $(OBJ) $(REAL_LDFLAGS)
 
 $(STLIBNAME): $(OBJ)
-	$(STLIB_MAKE_CMD) $(STLIBNAME) $(OBJ)
+	$(STLIB_MAKE_CMD) $(STLIBNAME) $(OBJ) ../homa/libhoma.a
 
 #################### SSL building rules start ####################
 $(SSL_DYLIBNAME): $(SSL_OBJ)
@@ -211,7 +211,7 @@ hiredis-example-ae:
 	@false
 else
 hiredis-example-ae: examples/example-ae.c adapters/ae.h $(STLIBNAME)
-	$(CC) -o examples/$@ $(REAL_CFLAGS) $(REAL_LDFLAGS) -I. -I$(AE_DIR) $< $(AE_DIR)/ae.o $(AE_DIR)/zmalloc.o $(AE_DIR)/../deps/jemalloc/lib/libjemalloc.a -pthread $(STLIBNAME)
+	$(CC) -o examples/$@ $(REAL_CFLAGS) $(REAL_LDFLAGS) -I. -I$(AE_DIR) $< $(AE_DIR)/ae.o $(AE_DIR)/zmalloc.o $(AE_DIR)/../deps/jemalloc/lib/libjemalloc.a $(AE_DIR)/../deps/jemalloc/lib/libhoma.a -pthread $(STLIBNAME)
 endif
 
 ifndef LIBUV_DIR

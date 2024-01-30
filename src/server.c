@@ -2803,7 +2803,7 @@ void initListeners(void) {
         if (conn_index < 0)
             serverPanic("Failed finding connection listener of %s", CONN_TYPE_HOMA);
         listener = &server.listeners[conn_index];
-        listener->bindaddr = &server.homasocket;
+        //listener->bindaddr = &server.homasocket;
         listener->bindaddr_count = 1;
         listener->port = server.homasocket;
         listener->ct = connectionByType(CONN_TYPE_HOMA);
@@ -5223,7 +5223,9 @@ void commandDocsCommand(client *c) {
             addReplyBulkCBuffer(c, cmd->fullname, sdslen(cmd->fullname));
             addReplyCommandDocs(c, cmd);
             numcmds++;
+serverLog(LL_NOTICE, "commandDocsCommand: lookupCommandBySds: %s\n", cmd->fullname);
         }
+serverLog(LL_NOTICE, "commandDocsCommand: numcmds=%d\n", numcmds);
         setDeferredMapLen(c,replylen,numcmds);
     }
 }

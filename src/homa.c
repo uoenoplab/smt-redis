@@ -143,12 +143,41 @@ printf("connHomaAccept\n");
 
 static int connHomaWrite(connection *conn, const void *data, size_t data_len) {
 serverLog(LL_NOTICE, "connHomaWrite");
-    return connectionTypeTcp()->write(conn, data, data_len);
+    int ret = homa_reply(conn->fd, data, data_len, (sockaddr_in_union *)conn->saddr, control.id);
+    if (ret < 0) {
+        serverLog(LL_WARNING, "connHomaWrite: homa_reply error: %s", strerror(errno));
+    }
+    else
+        ret = data_len;
+
+    connHomaClose(conn);
+    return ret;
 }
 
 static int connHomaWritev(connection *conn, const struct iovec *iov, int iovcnt) {
-serverLog(LL_NOTICE, "connSetHomaWritev");
-    return connectionTypeTcp()->writev(conn, iov, iovcnt);
+    char client_ip[INET_ADDRSTRLEN];
+    if (inet_ntop(AF_INET, &conn->saddr->sin_addr, client_ip, INET_ADDRSTRLEN) == NULL) {
+        serverLog(LL_NOTICE, "Couldn't convert client address to string (inet_ntop): %s", strerror(errno));
+        return -1;
+    }
+
+    ssize_t nwritten = 0;
+    for (size_t i = 0; i < iovcnt; i++) {
+        serverLog(LL_NOTICE, "iov[%d] len=%ld %.8s", i, iov[i].iov_len, (char*)iov[i].iov_base);
+        nwritten += iov[i].iov_len;
+    }
+
+    serverLog(LL_NOTICE, "sending %ld bytes to fd=%d (ip %s, port %hu, iovcnt %d, rpcid %ld, num_bpages %d):",
+        nwritten, conn->fd, client_ip, ntohs(conn->saddr->sin_port), iovcnt, control.id, control.num_bpages);
+
+    int ret = homa_replyv(conn->fd, iov, iovcnt, (sockaddr_in_union*)conn->saddr, control.id);
+    if (ret < 0) {
+        serverLog(LL_WARNING, "Homa replyv error: %s", strerror(errno));
+	exit(1);
+	return -1;
+    }
+    serverLog(LL_NOTICE, "connHomaWritev control.id=%ld ret=%d nwritten=%ld", control.id, ret, nwritten);
+    return nwritten;
 }
 
 static int connHomaRead(connection *conn, void *buf, size_t buf_len) {
@@ -168,6 +197,10 @@ serverLog(LL_NOTICE, "connHomaRead");
     }
 
     struct sockaddr_in *client_addr = (struct sockaddr_in*)hdr.msg_name;
+    if (!conn->saddr) {
+        conn->saddr = zmalloc(sizeof(struct sockaddr_in));
+        memcpy(conn->saddr, client_addr, sizeof(struct sockaddr_in));
+    }
 
     char client_ip[INET_ADDRSTRLEN];
     if (inet_ntop(AF_INET, &(client_addr->sin_addr), client_ip, INET_ADDRSTRLEN) == NULL) {
@@ -176,18 +209,20 @@ serverLog(LL_NOTICE, "connHomaRead");
     }
     serverLog(LL_NOTICE, "Server recv (ip %s, port %hu, reqlen %ld, rpcid %ld, num_bpages %d):",
         client_ip, ntohs(client_addr->sin_port), reqlen, *rpcid, control.num_bpages);
-    memcpy(buf, &recv_buf_region[control.bpage_offsets[0]], reqlen);
-
-    for (size_t i = 0; i < reqlen; i++) {
-        serverLog(LL_NOTICE, "%02hhX ", ((char*)buf)[i]);
+    if (buf_len < reqlen) {
+        serverLog(LL_WARNING, "connHomaRead buf_len=%ld but read=%ld", buf_len, reqlen);
+        return -1;
     }
-    printf("\n");
+
+    memcpy(conn->saddr, client_addr, sizeof(struct sockaddr_in));
+    memcpy(buf, &recv_buf_region[control.bpage_offsets[0]], reqlen);
+    serverLog(LL_NOTICE, "%s", (char*)buf);
 
     return reqlen;
 }
 
 static int connHomaSetWriteHandler(connection *conn, ConnectionCallbackFunc func, int barrier) {
-serverLog(LL_NOTICE, "connSetHomaWriteHandler");
+serverLog(LL_NOTICE, "connHomaSetWriteHandler");
     return connectionTypeTcp()->set_write_handler(conn, func, barrier);
 }
 
@@ -201,14 +236,17 @@ static const char *connHomaGetLastError(connection *conn) {
 }
 
 static ssize_t connHomaSyncWrite(connection *conn, char *ptr, ssize_t size, long long timeout) {
+serverLog(LL_NOTICE, "connHomaSyncWrite");
     return syncWrite(conn->fd, ptr, size, timeout);
 }
 
 static ssize_t connHomaSyncRead(connection *conn, char *ptr, ssize_t size, long long timeout) {
+serverLog(LL_NOTICE, "connHomaSyncRead");
     return syncRead(conn->fd, ptr, size, timeout);
 }
 
 static ssize_t connHomaSyncReadLine(connection *conn, char *ptr, ssize_t size, long long timeout) {
+serverLog(LL_NOTICE, "connHomaSyncReadLine");
     return syncReadLine(conn->fd, ptr, size, timeout);
 }
 

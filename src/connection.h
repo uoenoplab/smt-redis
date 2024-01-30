@@ -117,6 +117,7 @@ struct connection {
     ConnectionState state;
     int last_errno;
     int fd;
+    struct sockaddr_in *saddr;
     short int flags;
     short int refs;
     unsigned short int iovcnt;

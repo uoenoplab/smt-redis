@@ -916,6 +916,7 @@ static void cliInitHelp(void) {
     dict *groups;
 
     if (cliConnect(CC_QUIET) == REDIS_ERR) {
+printf("cliConnect == REDIS_ERR\n");
         /* Can not connect to the server, but we still want to provide
          * help, generate it only from the static cli_commands.c data instead. */
         groups = dictCreate(&groupsdt);
@@ -924,6 +925,7 @@ static void cliInitHelp(void) {
     }
     commandTable = redisCommand(context, "COMMAND DOCS");
     if (commandTable == NULL || commandTable->type == REDIS_REPLY_ERROR) {
+printf("help commandTable reply error\n");
         /* New COMMAND DOCS subcommand not supported - generate help from
          * static cli_commands.c data instead. */
         freeReplyObject(commandTable);
@@ -946,6 +948,7 @@ static void cliInitHelp(void) {
     qsort(helpEntries, helpEntriesLen, sizeof(helpEntry), helpEntryCompare);
     freeReplyObject(commandTable);
     dictRelease(groups);
+printf("help commandTable reply success\n");
 }
 
 /* Output command help to stdout. */
@@ -1664,7 +1667,11 @@ static int cliConnect(int flags) {
         /* Do not use hostsocket when we got redirected in cluster mode */
         if (config.hostsocket == NULL ||
             (config.cluster_mode && config.cluster_reissue_command)) {
-            context = redisConnect(config.conn_info.hostip,config.conn_info.hostport);
+	    if (config.conn_info.hostport == 8888)
+                context = redisConnectHoma(config.conn_info.hostip,config.conn_info.hostport);
+            else
+                context = redisConnect(config.conn_info.hostip,config.conn_info.hostport);
+//printf("Got context to connect to Homa\n");
         } else {
             context = redisConnectUnix(config.hostsocket);
         }

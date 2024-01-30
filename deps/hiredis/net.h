@@ -54,4 +54,7 @@ int redisCheckConnectDone(redisContext *c, int *completed);
 int redisSetTcpNoDelay(redisContext *c);
 int redisContextSetTcpUserTimeout(redisContext *c, unsigned int timeout);
 
+int redisContextConnectBindHoma(redisContext *c, const char *addr, int port,
+                               const struct timeval *timeout,
+                               const char *source_addr);
 #endif

@@ -47,19 +47,60 @@
 #include "sockcompat.h"
 #include "win32.h"
 
+#include "homa.h"
+#include "homa_hl.h"
+
 /* Defined in hiredis.c */
 void __redisSetError(redisContext *c, int type, const char *str);
 
 int redisContextUpdateCommandTimeout(redisContext *c, const struct timeval *timeout);
 
+static void redisHomaClose(redisContext *c) {
+printf("redisHomaClose: closing fd=%d\n", c->fd);
+    if (c && c->fd != REDIS_INVALID_FD) {
+        c->fd = REDIS_INVALID_FD;
+    }
+}
+
 void redisNetClose(redisContext *c) {
+    if (c->connection_type == REDIS_CONN_HOMA) return redisHomaClose(c);
+
     if (c && c->fd != REDIS_INVALID_FD) {
         close(c->fd);
         c->fd = REDIS_INVALID_FD;
     }
 }
 
+static ssize_t redisHomaRead(redisContext *c, char *buf, size_t bufcap) {
+printf("trying to read %ld bytes from fd=%d with rpcid=%ld\n", bufcap, c->fd, control.id);
+    // TODO how to handle how much to read??
+    control.flags = HOMA_RECVMSG_RESPONSE;
+    uint64_t *rpcid = &control.id;
+
+    size_t nread = recvmsg(c->fd, &hdr, 0);
+printf("Homa managed to read %ld bytes from fd=%d with rpcid=%ld\n", nread, c->fd, control.id);
+
+    struct sockaddr_in *server_addr = (struct sockaddr_in*)hdr.msg_name;
+    char server_ip[INET_ADDRSTRLEN];
+    if (inet_ntop(AF_INET, &(server_addr->sin_addr), server_ip, INET_ADDRSTRLEN) == NULL) {
+        printf("Couldn't convert server address to string (inet_ntop): %s\n", strerror(errno));
+        return -1;
+    }
+
+printf("Homa Received from server (ip %s, port %hu, reqlen %ld, rpcid %ld, num_bpages %d):\n",
+    server_ip, ntohs(server_addr->sin_port), nread, *rpcid, control.num_bpages);
+
+printf("read %s than bufcap\n", nread > bufcap ? "more" : "less");
+
+    memcpy(buf, &recv_buf_region[control.bpage_offsets[0]], nread > bufcap ? bufcap : nread);
+    printf("%.8s", (char*)buf);
+
+    return nread;
+}
+
 ssize_t redisNetRead(redisContext *c, char *buf, size_t bufcap) {
+    if (c->connection_type == REDIS_CONN_HOMA) return redisHomaRead(c, buf, bufcap);
+
     ssize_t nread = recv(c->fd, buf, bufcap, 0);
     if (nread == -1) {
         if ((errno == EWOULDBLOCK && !(c->flags & REDIS_BLOCK)) || (errno == EINTR)) {
@@ -77,11 +118,36 @@ ssize_t redisNetRead(redisContext *c, char *buf, size_t bufcap) {
         __redisSetError(c, REDIS_ERR_EOF, "Server closed the connection");
         return -1;
     } else {
+printf("redisNetRead: Received from server %ld bytes: %.8s\n", nread, buf);
         return nread;
     }
 }
 
+static ssize_t redisHomaWrite(redisContext *c) {
+    ssize_t nwritten;
+
+    uint64_t rpcid = 0;
+    char server_ip[INET_ADDRSTRLEN];
+    if (inet_ntop(AF_INET, c->saddr, server_ip, INET_ADDRSTRLEN) == NULL) {
+        printf("Couldn't convert client address to string (inet_ntop): %s\n", strerror(errno));
+        return -1;
+    }
+
+printf("Homa sending through the network to %s fd=%d len=%ld rpcid=%ld\n", server_ip, c->fd, hi_sdslen(c->obuf), rpcid);
+    int ret = homa_send(c->fd, c->obuf, hi_sdslen(c->obuf), (sockaddr_in_union *)c->saddr, &rpcid, 0);
+    if (ret != 0) {
+        __redisSetError(c, REDIS_ERR_IO, strerror(errno));
+        return -1;
+    }
+
+    control.id = rpcid;
+    nwritten = hi_sdslen(c->obuf);
+    return nwritten;
+}
+
 ssize_t redisNetWrite(redisContext *c) {
+
+    if (c->connection_type == REDIS_CONN_HOMA) return redisHomaWrite(c);
     ssize_t nwritten;
 
     nwritten = send(c->fd, c->obuf, hi_sdslen(c->obuf), 0);
@@ -311,6 +377,7 @@ int redisCheckConnectDone(redisContext *c, int *completed) {
         return REDIS_OK;
     }
     int error = errno;
+printf("redisCheckConnectionDone not okay\n");
     if (error == EINPROGRESS) {
         /* must check error to see if connect failed.  Get the socket error */
         int fail, so_error;
@@ -669,4 +736,171 @@ int redisContextConnectUnix(redisContext *c, const char *path, const struct time
 oom:
     __redisSetError(c, REDIS_ERR_OOM, "Out of memory");
     return REDIS_ERR;
+}
+
+static int _redisContextConnectHoma(redisContext *c, const char *addr, int port,
+                                   const struct timeval *timeout,
+                                   const char *source_addr) {
+    redisFD s;
+    int rv, n;
+    char _port[6];  /* strlen("65535"); */
+    struct addrinfo hints, *servinfo, *bservinfo, *p, *b;
+    int blocking = (c->flags & REDIS_BLOCK);
+    int reuseaddr = (c->flags & REDIS_REUSEADDR);
+    long timeout_msec = -1;
+
+    servinfo = NULL;
+    c->connection_type = REDIS_CONN_HOMA;
+    c->tcp.port = port;
+
+    /* We need to take possession of the passed parameters
+     * to make them reusable for a reconnect.
+     * We also carefully check we don't free data we already own,
+     * as in the case of the reconnect method.
+     *
+     * This is a bit ugly, but atleast it works and doesn't leak memory.
+     **/
+    // we reuse the tcp param spaces for Homa addr and port
+    if (c->tcp.host != addr) {
+        hi_free(c->tcp.host);
+
+        c->tcp.host = hi_strdup(addr);
+        if (c->tcp.host == NULL)
+            goto oom;
+    }
+
+    if (timeout) {
+        if (redisContextUpdateConnectTimeout(c, timeout) == REDIS_ERR)
+            goto oom;
+    } else {
+        hi_free(c->connect_timeout);
+        c->connect_timeout = NULL;
+    }
+
+    if (redisContextTimeoutMsec(c, &timeout_msec) != REDIS_OK) {
+        goto error;
+    }
+
+    if (source_addr == NULL) {
+        hi_free(c->tcp.source_addr);
+        c->tcp.source_addr = NULL;
+    } else if (c->tcp.source_addr != source_addr) {
+        hi_free(c->tcp.source_addr);
+        c->tcp.source_addr = hi_strdup(source_addr);
+    }
+
+    snprintf(_port, 6, "%d", port);
+    memset(&hints,0,sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+
+    /* DNS lookup. To use dual stack, set both flags to prefer both IPv4 and
+     * IPv6. By default, for historical reasons, we try IPv4 first and then we
+     * try IPv6 only if no IPv4 address was found. */
+    if (c->flags & REDIS_PREFER_IPV6 && c->flags & REDIS_PREFER_IPV4)
+        hints.ai_family = AF_UNSPEC;
+    else if (c->flags & REDIS_PREFER_IPV6)
+        hints.ai_family = AF_INET6;
+    else
+        hints.ai_family = AF_INET;
+
+    rv = getaddrinfo(c->tcp.host, _port, &hints, &servinfo);
+    if (rv != 0 && hints.ai_family != AF_UNSPEC) {
+        /* Try again with the other IP version. */
+        hints.ai_family = (hints.ai_family == AF_INET) ? AF_INET6 : AF_INET;
+        rv = getaddrinfo(c->tcp.host, _port, &hints, &servinfo);
+    }
+    if (rv != 0) {
+        __redisSetError(c, REDIS_ERR_OTHER, gai_strerror(rv));
+        return REDIS_ERR;
+    }
+    for (p = servinfo; p != NULL; p = p->ai_next) {
+        p->ai_protocol = IPPROTO_HOMA;
+        if ((s = socket(p->ai_family,p->ai_socktype,p->ai_protocol)) == REDIS_INVALID_FD) {
+            continue;
+        }
+        c->fd = s;
+        if (redisSetBlocking(c,0) != REDIS_OK)
+            goto error;
+        if (c->tcp.source_addr) {
+            int bound = 0;
+            /* Using getaddrinfo saves us from self-determining IPv4 vs IPv6 */
+            if ((rv = getaddrinfo(c->tcp.source_addr, NULL, &hints, &bservinfo)) != 0) {
+                char buf[128];
+                snprintf(buf,sizeof(buf),"Can't get addr: %s",gai_strerror(rv));
+                __redisSetError(c,REDIS_ERR_OTHER,buf);
+                goto error;
+            }
+
+            if (reuseaddr) {
+                n = 1;
+                if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (char*) &n,
+                               sizeof(n)) < 0) {
+                    freeaddrinfo(bservinfo);
+                    goto error;
+                }
+            }
+
+            for (b = bservinfo; b != NULL; b = b->ai_next) {
+                if (bind(s,b->ai_addr,b->ai_addrlen) != -1) {
+                    bound = 1;
+                    break;
+                }
+            }
+            freeaddrinfo(bservinfo);
+            if (!bound) {
+                char buf[128];
+                snprintf(buf,sizeof(buf),"Can't bind socket: %s",strerror(errno));
+                __redisSetError(c,REDIS_ERR_OTHER,buf);
+                goto error;
+            }
+        }
+
+        /* For repeat connection */
+        hi_free(c->saddr);
+        c->saddr = hi_malloc(p->ai_addrlen);
+        if (c->saddr == NULL) {
+            goto oom;
+        }
+
+        memcpy(c->saddr, p->ai_addr, p->ai_addrlen);
+        c->addrlen = p->ai_addrlen;
+
+	// now we "connect" to homa socket
+        if (init_recv_args(c->fd, c->saddr, c->addrlen) != 0) {
+            printf("Failed to init homa recv buffer\n");
+            goto error;
+        }
+
+        if (blocking && redisSetBlocking(c,1) != REDIS_OK)
+            goto error;
+
+        c->flags |= REDIS_CONNECTED;
+        rv = REDIS_OK;
+        goto end;
+    }
+    if (p == NULL) {
+        char buf[128];
+        snprintf(buf,sizeof(buf),"Can't create socket: %s",strerror(errno));
+        __redisSetError(c,REDIS_ERR_OTHER,buf);
+        goto error;
+    }
+
+oom:
+    __redisSetError(c, REDIS_ERR_OOM, "Out of memory");
+error:
+    rv = REDIS_ERR;
+end:
+    if(servinfo) {
+        freeaddrinfo(servinfo);
+    }
+
+printf("Initialized FD to Homa port\n");
+    return rv;  // Need to return REDIS_OK if alright
+}
+
+int redisContextConnectBindHoma(redisContext *c, const char *addr, int port,
+                               const struct timeval *timeout,
+                               const char *source_addr) {
+    return _redisContextConnectHoma(c, addr, port, timeout, source_addr);
 }
