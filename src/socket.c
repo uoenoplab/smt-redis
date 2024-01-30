@@ -75,7 +75,7 @@ static ConnectionType CT_Socket;
  */
 
 static connection *connCreateSocket(void) {
-serverLog(LL_NOTICE, "connSocketCreate");
+//serverLog(LL_NOTICE, "connSocketCreate");
     connection *conn = zcalloc(sizeof(connection));
     conn->type = &CT_Socket;
     conn->fd = -1;
@@ -95,7 +95,7 @@ serverLog(LL_NOTICE, "connSocketCreate");
  * but could but possible with other protocols).
  */
 static connection *connCreateAcceptedSocket(int fd, void *priv) {
-serverLog(LL_NOTICE, "connSocketAcceptedSocket");
+//serverLog(LL_NOTICE, "connSocketAcceptedSocket");
     UNUSED(priv);
     connection *conn = connCreateSocket();
     conn->fd = fd;
@@ -105,7 +105,7 @@ serverLog(LL_NOTICE, "connSocketAcceptedSocket");
 
 static int connSocketConnect(connection *conn, const char *addr, int port, const char *src_addr,
         ConnectionCallbackFunc connect_handler) {
-serverLog(LL_NOTICE, "connSocketConnect");
+//serverLog(LL_NOTICE, "connSocketConnect");
     int fd = anetTcpNonBlockBestEffortBindConnect(NULL,addr,port,src_addr);
     if (fd == -1) {
         conn->state = CONN_STATE_ERROR;
@@ -130,7 +130,7 @@ serverLog(LL_NOTICE, "connSocketConnect");
  */
 
 static void connSocketShutdown(connection *conn) {
-serverLog(LL_NOTICE, "connSocketShutdown");
+//serverLog(LL_NOTICE, "connSocketShutdown");
     if (conn->fd == -1) return;
 
     shutdown(conn->fd, SHUT_RDWR);
@@ -138,7 +138,7 @@ serverLog(LL_NOTICE, "connSocketShutdown");
 
 /* Close the connection and free resources. */
 static void connSocketClose(connection *conn) {
-serverLog(LL_NOTICE, "connSocketClose");
+//serverLog(LL_NOTICE, "connSocketClose");
     if (conn->fd != -1) {
         aeDeleteFileEvent(server.el,conn->fd, AE_READABLE | AE_WRITABLE);
         close(conn->fd);
@@ -157,7 +157,7 @@ serverLog(LL_NOTICE, "connSocketClose");
 }
 
 static int connSocketWrite(connection *conn, const void *data, size_t data_len) {
-serverLog(LL_NOTICE, "connSocketWrite");
+//serverLog(LL_NOTICE, "connSocketWrite");
     int ret = write(conn->fd, data, data_len);
     if (ret < 0 && errno != EAGAIN) {
         conn->last_errno = errno;
@@ -173,7 +173,7 @@ serverLog(LL_NOTICE, "connSocketWrite");
 }
 
 static int connSocketWritev(connection *conn, const struct iovec *iov, int iovcnt) {
-serverLog(LL_NOTICE, "connSocketWritev");
+//serverLog(LL_NOTICE, "connSocketWritev");
     int ret = writev(conn->fd, iov, iovcnt);
     if (ret < 0 && errno != EAGAIN) {
         conn->last_errno = errno;
@@ -189,7 +189,7 @@ serverLog(LL_NOTICE, "connSocketWritev");
 }
 
 static int connSocketRead(connection *conn, void *buf, size_t buf_len) {
-serverLog(LL_NOTICE, "connSocketRead");
+//serverLog(LL_NOTICE, "connSocketRead");
     int ret = read(conn->fd, buf, buf_len);
     if (!ret) {
         conn->state = CONN_STATE_CLOSED;
@@ -203,12 +203,12 @@ serverLog(LL_NOTICE, "connSocketRead");
             conn->state = CONN_STATE_ERROR;
     }
 
-serverLog(LL_NOTICE, "read len=%d : %.32s", ret, buf);
+//serverLog(LL_NOTICE, "read len=%d : %.32s", ret, buf);
     return ret;
 }
 
 static int connSocketAccept(connection *conn, ConnectionCallbackFunc accept_handler) {
-serverLog(LL_NOTICE, "connSocketAccept");
+//serverLog(LL_NOTICE, "connSocketAccept");
     int ret = C_OK;
 
     if (conn->state != CONN_STATE_ACCEPTING) return C_ERR;
@@ -230,7 +230,7 @@ serverLog(LL_NOTICE, "connSocketAccept");
  * loop.
  */
 static int connSocketSetWriteHandler(connection *conn, ConnectionCallbackFunc func, int barrier) {
-serverLog(LL_NOTICE, "connSocketWriteHandler");
+//serverLog(LL_NOTICE, "connSocketWriteHandler");
     if (func == conn->write_handler) return C_OK;
 
     conn->write_handler = func;
@@ -250,7 +250,7 @@ serverLog(LL_NOTICE, "connSocketWriteHandler");
  * If NULL, the existing handler is removed.
  */
 static int connSocketSetReadHandler(connection *conn, ConnectionCallbackFunc func) {
-serverLog(LL_NOTICE, "connSocketReadHandler");
+//serverLog(LL_NOTICE, "connSocketReadHandler");
     if (func == conn->read_handler) return C_OK;
 
     conn->read_handler = func;
@@ -341,7 +341,7 @@ static void connSocketAcceptHandler(aeEventLoop *el, int fd, void *privdata, int
 }
 
 static int connSocketAddr(connection *conn, char *ip, size_t ip_len, int *port, int remote) {
-serverLog(LL_NOTICE, "connSocketAddr");
+//serverLog(LL_NOTICE, "connSocketAddr");
     if (anetFdToString(conn->fd, ip, ip_len, port, remote) == 0)
         return C_OK;
 

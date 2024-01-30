@@ -39,12 +39,12 @@ static const char *connHomaGetType(connection *conn) {
 }
 
 static void connHomaEventHandler(struct aeEventLoop *el, int fd, void *clientData, int mask) {
-serverLog(LL_NOTICE, "connHomaEventHandler");
+//serverLog(LL_NOTICE, "connHomaEventHandler");
     connectionTypeTcp()->ae_handler(el, fd, clientData, mask);
 }
 
 static int connHomaAddr(connection *conn, char *ip, size_t ip_len, int *port, int remote) {
-serverLog(LL_NOTICE, "connHomaAddr");
+//serverLog(LL_NOTICE, "connHomaAddr");
     return connectionTypeTcp()->addr(conn, ip, ip_len, port, remote);
 }
 
@@ -100,7 +100,7 @@ static connection *connCreateHoma(void) {
     conn->fd = -1;
     //conn->iovcnt = IOV_MAX;
     conn->iovcnt = 1024;
-serverLog(LL_NOTICE, "connCreateHoma");
+//serverLog(LL_NOTICE, "connCreateHoma");
     return conn;
 }
 
@@ -125,12 +125,12 @@ static void connHomaAcceptHandler(aeEventLoop *el, int fd, void *privdata, int m
 }
 
 static void connHomaShutdown(connection *conn) {
-serverLog(LL_NOTICE, "connSetHomaShutdown");
+//serverLog(LL_NOTICE, "connSetHomaShutdown");
     connectionTypeHoma()->shutdown(conn);
 }
 
 static void connHomaClose(connection *conn) {
-serverLog(LL_NOTICE, "connSetHomaClose");
+//serverLog(LL_NOTICE, "connSetHomaClose");
 // TODO connectionless, never close server FD. instead remove from data structure
     //connectionTypeTcp()->close(conn);
 }
@@ -142,7 +142,7 @@ printf("connHomaAccept\n");
 }
 
 static int connHomaWrite(connection *conn, const void *data, size_t data_len) {
-serverLog(LL_NOTICE, "connHomaWrite");
+//serverLog(LL_NOTICE, "connHomaWrite");
     int ret = homa_reply(conn->fd, data, data_len, (sockaddr_in_union *)conn->saddr, control.id);
     if (ret < 0) {
         serverLog(LL_WARNING, "connHomaWrite: homa_reply error: %s", strerror(errno));
@@ -150,7 +150,6 @@ serverLog(LL_NOTICE, "connHomaWrite");
     else
         ret = data_len;
 
-    connHomaClose(conn);
     return ret;
 }
 
@@ -162,7 +161,7 @@ static int connHomaWritev(connection *conn, const struct iovec *iov, int iovcnt)
     }
 
     ssize_t nwritten = 0;
-    for (size_t i = 0; i < iovcnt; i++) {
+    for (int i = 0; i < iovcnt; i++) {
         serverLog(LL_NOTICE, "iov[%d] len=%ld %.8s", i, iov[i].iov_len, (char*)iov[i].iov_base);
         nwritten += iov[i].iov_len;
     }
@@ -181,7 +180,7 @@ static int connHomaWritev(connection *conn, const struct iovec *iov, int iovcnt)
 }
 
 static int connHomaRead(connection *conn, void *buf, size_t buf_len) {
-serverLog(LL_NOTICE, "connHomaRead");
+//serverLog(LL_NOTICE, "connHomaRead");
     uint64_t *rpcid = &control.id;
     ssize_t reqlen = 0;
     int ret = 0;
@@ -207,27 +206,27 @@ serverLog(LL_NOTICE, "connHomaRead");
         serverLog(LL_NOTICE, "Couldn't convert client address to string (inet_ntop): %s", strerror(errno));
         return -1;
     }
-    serverLog(LL_NOTICE, "Server recv (ip %s, port %hu, reqlen %ld, rpcid %ld, num_bpages %d):",
-        client_ip, ntohs(client_addr->sin_port), reqlen, *rpcid, control.num_bpages);
+//    serverLog(LL_NOTICE, "Server recv (ip %s, port %hu, reqlen %ld, rpcid %ld, num_bpages %d):",
+//        client_ip, ntohs(client_addr->sin_port), reqlen, *rpcid, control.num_bpages);
     if (buf_len < reqlen) {
         serverLog(LL_WARNING, "connHomaRead buf_len=%ld but read=%ld", buf_len, reqlen);
-        return -1;
+        exit(1);
     }
 
     memcpy(conn->saddr, client_addr, sizeof(struct sockaddr_in));
     memcpy(buf, &recv_buf_region[control.bpage_offsets[0]], reqlen);
-    serverLog(LL_NOTICE, "%s", (char*)buf);
+//    serverLog(LL_NOTICE, "%s\n", (char*)buf);
 
     return reqlen;
 }
 
 static int connHomaSetWriteHandler(connection *conn, ConnectionCallbackFunc func, int barrier) {
-serverLog(LL_NOTICE, "connHomaSetWriteHandler");
+//serverLog(LL_NOTICE, "connHomaSetWriteHandler");
     return connectionTypeTcp()->set_write_handler(conn, func, barrier);
 }
 
 static int connHomaSetReadHandler(connection *conn, ConnectionCallbackFunc func) {
-serverLog(LL_NOTICE, "connHomaReadHandler");
+//serverLog(LL_NOTICE, "connHomaReadHandler");
     return connectionTypeTcp()->set_read_handler(conn, func);
 }
 
@@ -236,17 +235,17 @@ static const char *connHomaGetLastError(connection *conn) {
 }
 
 static ssize_t connHomaSyncWrite(connection *conn, char *ptr, ssize_t size, long long timeout) {
-serverLog(LL_NOTICE, "connHomaSyncWrite");
+//serverLog(LL_NOTICE, "connHomaSyncWrite");
     return syncWrite(conn->fd, ptr, size, timeout);
 }
 
 static ssize_t connHomaSyncRead(connection *conn, char *ptr, ssize_t size, long long timeout) {
-serverLog(LL_NOTICE, "connHomaSyncRead");
+//serverLog(LL_NOTICE, "connHomaSyncRead");
     return syncRead(conn->fd, ptr, size, timeout);
 }
 
 static ssize_t connHomaSyncReadLine(connection *conn, char *ptr, ssize_t size, long long timeout) {
-serverLog(LL_NOTICE, "connHomaSyncReadLine");
+//serverLog(LL_NOTICE, "connHomaSyncReadLine");
     return syncReadLine(conn->fd, ptr, size, timeout);
 }
 

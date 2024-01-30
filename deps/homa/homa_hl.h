@@ -33,6 +33,7 @@ enum {
 };
 
 int init_recv_args(int sockfd, void* addr, socklen_t addrlen);
+int init_recv_args_per_conn(int sockfd, char **homa_recv_buf_region);
 
 //extern int compare_float(const void * a, const void * b);
 //

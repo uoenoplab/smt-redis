@@ -20,7 +20,7 @@ int init_recv_args(int sockfd, void* addr, socklen_t addrlen) {
         printf("Couldn't mmap buffer region: %s\n", strerror(errno));
         return -1;
     }
-    printf("Recv buf size: %ld\n", recv_buf_size);
+//    printf("Recv buf size: %ld\n", recv_buf_size);
 
     arg.start = recv_buf_region;
     arg.length = recv_buf_size;
@@ -40,6 +40,31 @@ int init_recv_args(int sockfd, void* addr, socklen_t addrlen) {
 
     return 0;
 }
+
+int init_recv_args_per_conn(int sockfd, char **homa_recv_buf_region) {
+    struct homa_set_buf_args arg;
+
+    // Set up buffer region.
+    *homa_recv_buf_region = (char *) mmap(NULL, recv_buf_size, PROT_READ|PROT_WRITE,
+        MAP_PRIVATE|MAP_ANONYMOUS, 0, 0);
+    if (recv_buf_region == MAP_FAILED) {
+        printf("Couldn't mmap buffer region: %s\n", strerror(errno));
+        return -1;
+    }
+//    printf("Recv buf size: %ld\n", recv_buf_size);
+
+    arg.start = *homa_recv_buf_region;
+    arg.length = recv_buf_size;
+
+    if (setsockopt(sockfd, IPPROTO_HOMA, SO_HOMA_SET_BUF, &arg, sizeof(arg)) < 0) {
+        printf("Error in setsockopt(SO_HOMA_SET_BUF): %s\n",
+                strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
+
 
 double calculate_time_delta_us(struct timespec a, struct timespec b) {
     double delta = (a.tv_sec - b.tv_sec) * 1000000.0 + (a.tv_nsec - b.tv_nsec) / 1000.0;

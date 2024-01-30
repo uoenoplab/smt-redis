@@ -856,7 +856,7 @@ redisContext *redisConnectWithOptions(const redisOptions *options) {
         redisContextConnectUnix(c, options->endpoint.unix_socket,
                                 options->connect_timeout);
     } else if (options->type == REDIS_CONN_HOMA) {
-        printf("Connecting with Homa to %s:%d\n", options->endpoint.tcp.ip, options->endpoint.tcp.port);
+//        printf("Connecting with Homa to %s:%d\n", options->endpoint.tcp.ip, options->endpoint.tcp.port);
         redisContextConnectBindHoma(c, options->endpoint.tcp.ip,
                                    options->endpoint.tcp.port, options->connect_timeout,
                                    options->endpoint.tcp.source_addr);
@@ -949,6 +949,7 @@ redisContext *redisConnectFd(redisFD fd) {
 redisContext *redisConnectHoma(const char *ip, int port) {
     redisOptions options = {0};
     REDIS_OPTIONS_SET_HOMA(&options, ip, port);
+    //options.options |= REDIS_OPT_NONBLOCK;
     return redisConnectWithOptions(&options);
 }
 
@@ -995,7 +996,7 @@ int redisBufferRead(redisContext *c) {
         return REDIS_ERR;
 
     nread = c->funcs->read(c, buf, sizeof(buf));
-printf("redisBufferRead: read->nread=%d\n", nread);
+//printf("redisBufferRead: read->nread=%d\n", nread);
     if (nread < 0) {
         return REDIS_ERR;
     }
@@ -1092,7 +1093,7 @@ int redisGetReply(redisContext *c, void **reply) {
             if (redisBufferWrite(c,&wdone) == REDIS_ERR)
                 return REDIS_ERR;
         } while (!wdone);
-printf("\nredisGetReply: finished redisBufferWrite\n");
+//printf("\nredisGetReply: finished redisBufferWrite\n");
         /* Read until there is a reply */
         do {
             if (redisBufferRead(c) == REDIS_ERR)
@@ -1101,7 +1102,7 @@ printf("\nredisGetReply: finished redisBufferWrite\n");
             if (redisNextInBandReplyFromReader(c,&aux) == REDIS_ERR)
                 return REDIS_ERR;
         } while (aux == NULL);
-printf("\nredisGetReply: finished redisBufferRead|redisNextInBandReplyFromReader: %s \n", (char*)aux);
+//printf("\nredisGetReply: finished redisBufferRead|redisNextInBandReplyFromReader: %s \n", (char*)aux);
     }
 
     /* Set reply or free it if we were passed NULL */

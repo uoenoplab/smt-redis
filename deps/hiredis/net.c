@@ -56,14 +56,18 @@ void __redisSetError(redisContext *c, int type, const char *str);
 int redisContextUpdateCommandTimeout(redisContext *c, const struct timeval *timeout);
 
 static void redisHomaClose(redisContext *c) {
-printf("redisHomaClose: closing fd=%d\n", c->fd);
+//printf("redisHomaClose: closing fd=%d\n", c->fd);
     if (c && c->fd != REDIS_INVALID_FD) {
         c->fd = REDIS_INVALID_FD;
     }
+    return;
 }
 
 void redisNetClose(redisContext *c) {
-    if (c->connection_type == REDIS_CONN_HOMA) return redisHomaClose(c);
+    if (c->connection_type == REDIS_CONN_HOMA) {
+        redisHomaClose(c);
+        return;
+    }
 
     if (c && c->fd != REDIS_INVALID_FD) {
         close(c->fd);
@@ -72,28 +76,37 @@ void redisNetClose(redisContext *c) {
 }
 
 static ssize_t redisHomaRead(redisContext *c, char *buf, size_t bufcap) {
-printf("trying to read %ld bytes from fd=%d with rpcid=%ld\n", bufcap, c->fd, control.id);
+//printf("trying to read %ld bytes from fd=%d with rpcid=%ld\n", bufcap, c->fd, control.id);
     // TODO how to handle how much to read??
-    control.flags = HOMA_RECVMSG_RESPONSE;
-    uint64_t *rpcid = &control.id;
+    c->homa_control.flags = HOMA_RECVMSG_RESPONSE;
+    c->homa_control.id = 0;
+
+    struct msghdr hdr;
+    memset(&hdr, 0, sizeof(hdr));
+    hdr.msg_name = (struct sockaddr_in*)c->saddr;
+    hdr.msg_namelen = c->addrlen;
+    hdr.msg_control = &(c->homa_control);
+    hdr.msg_controllen = sizeof(c->homa_control);
 
     size_t nread = recvmsg(c->fd, &hdr, 0);
-printf("Homa managed to read %ld bytes from fd=%d with rpcid=%ld\n", nread, c->fd, control.id);
+//    printf("nread=%ld %p %ld\n", nread, buf, bufcap);
+//
+//    struct sockaddr_in *server_addr = (struct sockaddr_in*)hdr.msg_name;
+//    char server_ip[INET_ADDRSTRLEN];
+//    if (inet_ntop(AF_INET, &(server_addr->sin_addr), server_ip, INET_ADDRSTRLEN) == NULL) {
+//        printf("Couldn't convert server address to string (inet_ntop): %s\n", strerror(errno));
+//        return -1;
+//    }
 
-    struct sockaddr_in *server_addr = (struct sockaddr_in*)hdr.msg_name;
-    char server_ip[INET_ADDRSTRLEN];
-    if (inet_ntop(AF_INET, &(server_addr->sin_addr), server_ip, INET_ADDRSTRLEN) == NULL) {
-        printf("Couldn't convert server address to string (inet_ntop): %s\n", strerror(errno));
-        return -1;
+    if (nread > bufcap) {
+        printf("Error: read %s than bufcap!!!\n", nread > bufcap ? "more" : "less");
+	exit(1);
     }
 
-printf("Homa Received from server (ip %s, port %hu, reqlen %ld, rpcid %ld, num_bpages %d):\n",
-    server_ip, ntohs(server_addr->sin_port), nread, *rpcid, control.num_bpages);
-
-printf("read %s than bufcap\n", nread > bufcap ? "more" : "less");
-
-    memcpy(buf, &recv_buf_region[control.bpage_offsets[0]], nread > bufcap ? bufcap : nread);
-    printf("%.8s", (char*)buf);
+//printf("Homa Received from server (ip %s, port %hu, reqlen %ld, rpcid %ld, num_bpages %d offset: %d): ",
+//    server_ip, ntohs(server_addr->sin_port), nread, c->homa_control.id, c->homa_control.num_bpages, c->homa_control.bpage_offsets[0]);
+    memcpy(buf, &c->homa_recv_buf_region[c->homa_control.bpage_offsets[0]], nread);
+//    printf("%s\n", (char*)buf);
 
     return nread;
 }
@@ -118,7 +131,6 @@ ssize_t redisNetRead(redisContext *c, char *buf, size_t bufcap) {
         __redisSetError(c, REDIS_ERR_EOF, "Server closed the connection");
         return -1;
     } else {
-printf("redisNetRead: Received from server %ld bytes: %.8s\n", nread, buf);
         return nread;
     }
 }
@@ -126,22 +138,22 @@ printf("redisNetRead: Received from server %ld bytes: %.8s\n", nread, buf);
 static ssize_t redisHomaWrite(redisContext *c) {
     ssize_t nwritten;
 
-    uint64_t rpcid = 0;
-    char server_ip[INET_ADDRSTRLEN];
-    if (inet_ntop(AF_INET, c->saddr, server_ip, INET_ADDRSTRLEN) == NULL) {
-        printf("Couldn't convert client address to string (inet_ntop): %s\n", strerror(errno));
-        return -1;
-    }
-
-printf("Homa sending through the network to %s fd=%d len=%ld rpcid=%ld\n", server_ip, c->fd, hi_sdslen(c->obuf), rpcid);
-    int ret = homa_send(c->fd, c->obuf, hi_sdslen(c->obuf), (sockaddr_in_union *)c->saddr, &rpcid, 0);
+    //memset(&(c->homa_control), 0, sizeof(c->homa_control));
+    int ret = homa_send(c->fd, c->obuf, hi_sdslen(c->obuf), (sockaddr_in_union *)c->saddr, &(c->homa_control).id, 0);
     if (ret != 0) {
         __redisSetError(c, REDIS_ERR_IO, strerror(errno));
         return -1;
     }
 
-    control.id = rpcid;
     nwritten = hi_sdslen(c->obuf);
+
+    char server_ip[INET_ADDRSTRLEN];
+    if (inet_ntop(AF_INET, (struct sockaddr_in*)c->saddr, server_ip, INET_ADDRSTRLEN) == NULL) {
+        printf("Couldn't convert client address to string (inet_ntop): %s\n", strerror(errno));
+        return -1;
+    }
+
+//printf("Homa sending through the network to %s fd=%d len=%ld rpcid=%ld: %.16s\n", server_ip, c->fd, hi_sdslen(c->obuf), c->homa_control.id, c->obuf);
     return nwritten;
 }
 
@@ -867,7 +879,7 @@ static int _redisContextConnectHoma(redisContext *c, const char *addr, int port,
         c->addrlen = p->ai_addrlen;
 
 	// now we "connect" to homa socket
-        if (init_recv_args(c->fd, c->saddr, c->addrlen) != 0) {
+        if (init_recv_args_per_conn(c->fd, &c->homa_recv_buf_region) != 0) {
             printf("Failed to init homa recv buffer\n");
             goto error;
         }
@@ -895,7 +907,7 @@ end:
         freeaddrinfo(servinfo);
     }
 
-printf("Initialized FD to Homa port\n");
+//printf("Initialized FD to Homa port\n");
     return rv;  // Need to return REDIS_OK if alright
 }
 

@@ -259,7 +259,10 @@ static redisContext *getRedisContext(const char *ip, int port,
     redisContext *ctx = NULL;
     redisReply *reply =  NULL;
     if (hostsocket == NULL)
-        ctx = redisConnect(ip, port);
+        if (port == 8888)
+            ctx = redisConnectHoma(ip, port);
+        else
+            ctx = redisConnect(ip, port);
     else
         ctx = redisConnectUnix(hostsocket);
     if (ctx == NULL || ctx->err) {
@@ -684,7 +687,10 @@ static client createClient(char *cmd, size_t len, client from, int thread_id) {
             port = node->port;
             c->cluster_node = node;
         }
-        c->context = redisConnectNonBlock(ip,port);
+        if (port == 8888)
+            c->context = redisConnectHoma(ip,port);
+        else
+            c->context = redisConnectNonBlock(ip,port);
     } else {
         c->context = redisConnectUnixNonBlock(config.hostsocket);
     }

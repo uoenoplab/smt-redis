@@ -33,6 +33,7 @@
 
 #ifndef __HIREDIS_H
 #define __HIREDIS_H
+#include "homa.h"
 #include "read.h"
 #include <stdarg.h> /* for va_list */
 #ifndef _MSC_VER
@@ -288,6 +289,10 @@ typedef struct redisContext {
     /* For non-blocking connect */
     struct sockaddr *saddr;
     size_t addrlen;
+
+    // for Homa recv buf
+    struct homa_recvmsg_args homa_control;
+    char *homa_recv_buf_region;
 
     /* Optional data and corresponding destructor users can use to provide
      * context to a given redisContext.  Not used by hiredis. */
