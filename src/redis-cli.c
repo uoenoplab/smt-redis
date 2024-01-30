@@ -948,7 +948,6 @@ printf("help commandTable reply error\n");
     qsort(helpEntries, helpEntriesLen, sizeof(helpEntry), helpEntryCompare);
     freeReplyObject(commandTable);
     dictRelease(groups);
-printf("help commandTable reply success\n");
 }
 
 /* Output command help to stdout. */

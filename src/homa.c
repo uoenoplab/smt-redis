@@ -154,20 +154,20 @@ static int connHomaWrite(connection *conn, const void *data, size_t data_len) {
 }
 
 static int connHomaWritev(connection *conn, const struct iovec *iov, int iovcnt) {
-    char client_ip[INET_ADDRSTRLEN];
-    if (inet_ntop(AF_INET, &conn->saddr->sin_addr, client_ip, INET_ADDRSTRLEN) == NULL) {
-        serverLog(LL_NOTICE, "Couldn't convert client address to string (inet_ntop): %s", strerror(errno));
-        return -1;
-    }
+//    char client_ip[INET_ADDRSTRLEN];
+//    if (inet_ntop(AF_INET, &conn->saddr->sin_addr, client_ip, INET_ADDRSTRLEN) == NULL) {
+//        serverLog(LL_NOTICE, "Couldn't convert client address to string (inet_ntop): %s", strerror(errno));
+//        return -1;
+//    }
 
     ssize_t nwritten = 0;
     for (int i = 0; i < iovcnt; i++) {
-        serverLog(LL_NOTICE, "iov[%d] len=%ld %.8s", i, iov[i].iov_len, (char*)iov[i].iov_base);
+//        serverLog(LL_NOTICE, "iov[%d] len=%ld %.8s", i, iov[i].iov_len, (char*)iov[i].iov_base);
         nwritten += iov[i].iov_len;
     }
 
-    serverLog(LL_NOTICE, "sending %ld bytes to fd=%d (ip %s, port %hu, iovcnt %d, rpcid %ld, num_bpages %d):",
-        nwritten, conn->fd, client_ip, ntohs(conn->saddr->sin_port), iovcnt, control.id, control.num_bpages);
+//    serverLog(LL_NOTICE, "sending %ld bytes to fd=%d (ip %s, port %hu, iovcnt %d, rpcid %ld, num_bpages %d):",
+//        nwritten, conn->fd, client_ip, ntohs(conn->saddr->sin_port), iovcnt, control.id, control.num_bpages);
 
     int ret = homa_replyv(conn->fd, iov, iovcnt, (sockaddr_in_union*)conn->saddr, control.id);
     if (ret < 0) {
@@ -175,7 +175,7 @@ static int connHomaWritev(connection *conn, const struct iovec *iov, int iovcnt)
 	exit(1);
 	return -1;
     }
-    serverLog(LL_NOTICE, "connHomaWritev control.id=%ld ret=%d nwritten=%ld", control.id, ret, nwritten);
+//    serverLog(LL_NOTICE, "connHomaWritev control.id=%ld ret=%d nwritten=%ld", control.id, ret, nwritten);
     return nwritten;
 }
 
@@ -195,27 +195,26 @@ static int connHomaRead(connection *conn, void *buf, size_t buf_len) {
         return -1;
     }
 
-    struct sockaddr_in *client_addr = (struct sockaddr_in*)hdr.msg_name;
-    if (!conn->saddr) {
-        conn->saddr = zmalloc(sizeof(struct sockaddr_in));
-        memcpy(conn->saddr, client_addr, sizeof(struct sockaddr_in));
-    }
-
-    char client_ip[INET_ADDRSTRLEN];
-    if (inet_ntop(AF_INET, &(client_addr->sin_addr), client_ip, INET_ADDRSTRLEN) == NULL) {
-        serverLog(LL_NOTICE, "Couldn't convert client address to string (inet_ntop): %s", strerror(errno));
-        return -1;
-    }
-//    serverLog(LL_NOTICE, "Server recv (ip %s, port %hu, reqlen %ld, rpcid %ld, num_bpages %d):",
-//        client_ip, ntohs(client_addr->sin_port), reqlen, *rpcid, control.num_bpages);
     if (buf_len < reqlen) {
         serverLog(LL_WARNING, "connHomaRead buf_len=%ld but read=%ld", buf_len, reqlen);
         exit(1);
     }
 
+    struct sockaddr_in *client_addr = (struct sockaddr_in*)hdr.msg_name;
+    if (!conn->saddr) {
+        conn->saddr = zmalloc(sizeof(struct sockaddr_in));
+    }
+//
+//    char client_ip[INET_ADDRSTRLEN];
+//    if (inet_ntop(AF_INET, &(client_addr->sin_addr), client_ip, INET_ADDRSTRLEN) == NULL) {
+//        serverLog(LL_NOTICE, "Couldn't convert client address to string (inet_ntop): %s", strerror(errno));
+//        return -1;
+//    }
+//    serverLog(LL_NOTICE, "Server recv (ip %s, port %hu, reqlen %ld, rpcid %ld, num_bpages %d):",
+//        client_ip, ntohs(client_addr->sin_port), reqlen, *rpcid, control.num_bpages);
     memcpy(conn->saddr, client_addr, sizeof(struct sockaddr_in));
     memcpy(buf, &recv_buf_region[control.bpage_offsets[0]], reqlen);
-//    serverLog(LL_NOTICE, "%s\n", (char*)buf);
+//serverLog(LL_NOTICE, "%s\n", (char*)buf);
 
     return reqlen;
 }
