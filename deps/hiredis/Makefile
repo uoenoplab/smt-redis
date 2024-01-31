@@ -162,7 +162,7 @@ sockcompat.o: sockcompat.c sockcompat.h
 test.o: test.c fmacros.h hiredis.h read.h sds.h alloc.h net.h sockcompat.h win32.h
 
 $(DYLIBNAME): $(OBJ)
-	$(DYLIB_MAKE_CMD) -o $(DYLIBNAME) $(OBJ) $(REAL_LDFLAGS)
+	$(DYLIB_MAKE_CMD) -o $(DYLIBNAME) $(OBJ) ../homa/libhoma.a $(REAL_LDFLAGS)
 
 $(STLIBNAME): $(OBJ)
 	$(STLIB_MAKE_CMD) $(STLIBNAME) $(OBJ) ../homa/libhoma.a

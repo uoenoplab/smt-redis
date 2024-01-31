@@ -51,7 +51,7 @@ ifneq (,$(filter $(BUILD_TLS),yes module))
     HIREDIS_MAKE_FLAGS = USE_SSL=1
 endif
 
-homa: .make-prerequsites
+homa: .make-prerequisites
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
 	cd homa && $(MAKE)
 

@@ -25,7 +25,7 @@ ifeq ($(OPTIMIZATION),-O3)
 	endif
 	REDIS_LDFLAGS+=-O3 -flto
 endif
-DEPENDENCY_TARGETS=hiredis linenoise lua hdr_histogram fpconv
+DEPENDENCY_TARGETS=homa hiredis linenoise lua hdr_histogram fpconv
 NODEPS:=clean distclean
 
 # Default settings
