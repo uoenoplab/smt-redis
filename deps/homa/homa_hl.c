@@ -3,6 +3,8 @@
 size_t recv_buf_size = 1000*HOMA_BPAGE_SIZE;
 char *recv_buf_region;
 
+char *homa_recv_buf[65536];
+
 struct homa_recvmsg_args control;
 struct msghdr hdr;
 

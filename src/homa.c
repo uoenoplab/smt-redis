@@ -80,7 +80,7 @@ static int connHomaListen(connListener *listener) {
             exit(1);
         }
 
-        if (init_recv_args(fd, addr, sizeof(struct sockaddr_in)) < 0) {
+        if (init_recv_args_per_conn(fd, &homa_recv_buf[fd]) < 0) {
             serverLog(LL_WARNING, "Couldn't init Homa recv buffer: %s", strerror(errno));
             exit(1);
         }
@@ -109,6 +109,7 @@ static connection *connCreateAcceptedHoma(int fd, void *priv) {
     connection *conn = connCreateHoma();
     conn->fd = fd;
     conn->state = CONN_STATE_ACCEPTING;
+    conn->saddr = zmalloc(sizeof(struct sockaddr_in));
     serverLog(LL_NOTICE,"Accepted connection to homa fd=%d", fd);
     return conn;
 }
@@ -143,7 +144,7 @@ printf("connHomaAccept\n");
 
 static int connHomaWrite(connection *conn, const void *data, size_t data_len) {
 //serverLog(LL_NOTICE, "connHomaWrite");
-    int ret = homa_reply(conn->fd, data, data_len, (sockaddr_in_union *)conn->saddr, control.id);
+    int ret = homa_reply(conn->fd, data, data_len, (sockaddr_in_union *)conn->saddr, conn->homa_control.id);
     if (ret < 0) {
         serverLog(LL_WARNING, "connHomaWrite: homa_reply error: %s", strerror(errno));
     }
@@ -169,7 +170,7 @@ static int connHomaWritev(connection *conn, const struct iovec *iov, int iovcnt)
 //    serverLog(LL_NOTICE, "sending %ld bytes to fd=%d (ip %s, port %hu, iovcnt %d, rpcid %ld, num_bpages %d):",
 //        nwritten, conn->fd, client_ip, ntohs(conn->saddr->sin_port), iovcnt, control.id, control.num_bpages);
 
-    int ret = homa_replyv(conn->fd, iov, iovcnt, (sockaddr_in_union*)conn->saddr, control.id);
+    int ret = homa_replyv(conn->fd, iov, iovcnt, (sockaddr_in_union*)conn->saddr, conn->homa_control.id);
     if (ret < 0) {
         serverLog(LL_WARNING, "Homa replyv error: %s", strerror(errno));
 	exit(1);
@@ -181,12 +182,19 @@ static int connHomaWritev(connection *conn, const struct iovec *iov, int iovcnt)
 
 static int connHomaRead(connection *conn, void *buf, size_t buf_len) {
 //serverLog(LL_NOTICE, "connHomaRead");
-    uint64_t *rpcid = &control.id;
     ssize_t reqlen = 0;
     int ret = 0;
 
-    control.flags = HOMA_RECVMSG_REQUEST;
-    control.id = 0;
+    memset(&conn->homa_control, 0, sizeof(struct homa_recvmsg_args));
+    conn->homa_control.flags = HOMA_RECVMSG_REQUEST;
+    conn->homa_control.id = 0;
+
+    struct msghdr hdr;
+    memset(&hdr, 0, sizeof(hdr));
+    hdr.msg_name = conn->saddr;
+    hdr.msg_namelen = sizeof(struct sockaddr_in); // assume IPv4
+    hdr.msg_control = &conn->homa_control;
+    hdr.msg_controllen = sizeof(conn->homa_control);
 
     reqlen = recvmsg(conn->fd, &hdr, 0);
 
@@ -200,20 +208,15 @@ static int connHomaRead(connection *conn, void *buf, size_t buf_len) {
         exit(1);
     }
 
-    struct sockaddr_in *client_addr = (struct sockaddr_in*)hdr.msg_name;
-    if (!conn->saddr) {
-        conn->saddr = zmalloc(sizeof(struct sockaddr_in));
+
+    char client_ip[INET_ADDRSTRLEN];
+    if (inet_ntop(AF_INET, &(conn->saddr->sin_addr), client_ip, INET_ADDRSTRLEN) == NULL) {
+        serverLog(LL_NOTICE, "Couldn't convert client address to string (inet_ntop): %s", strerror(errno));
+        return -1;
     }
-//
-//    char client_ip[INET_ADDRSTRLEN];
-//    if (inet_ntop(AF_INET, &(client_addr->sin_addr), client_ip, INET_ADDRSTRLEN) == NULL) {
-//        serverLog(LL_NOTICE, "Couldn't convert client address to string (inet_ntop): %s", strerror(errno));
-//        return -1;
-//    }
-//    serverLog(LL_NOTICE, "Server recv (ip %s, port %hu, reqlen %ld, rpcid %ld, num_bpages %d):",
-//        client_ip, ntohs(client_addr->sin_port), reqlen, *rpcid, control.num_bpages);
-    memcpy(conn->saddr, client_addr, sizeof(struct sockaddr_in));
-    memcpy(buf, &recv_buf_region[control.bpage_offsets[0]], reqlen);
+    serverLog(LL_NOTICE, "Server recv (ip %s, port %hu, reqlen %ld, rpcid %ld, num_bpages %d):",
+        client_ip, ntohs(conn->saddr->sin_port), reqlen, conn->homa_control.id, conn->homa_control.num_bpages);
+    memcpy(buf, &homa_recv_buf[conn->fd][conn->homa_control.bpage_offsets[0]], reqlen);
 //serverLog(LL_NOTICE, "%s\n", (char*)buf);
 
     return reqlen;

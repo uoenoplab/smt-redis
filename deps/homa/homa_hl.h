@@ -21,6 +21,8 @@
 extern size_t recv_buf_size;
 extern char *recv_buf_region;
 
+extern char *homa_recv_buf[65536];
+
 extern struct homa_recvmsg_args control;
 extern struct msghdr hdr;
 
