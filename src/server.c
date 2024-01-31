@@ -2798,16 +2798,25 @@ void initListeners(void) {
         listener->ct = connectionByType(CONN_TYPE_UNIX);
         listener->priv = &server.unixsocketperm; /* Unix socket specified */
     }
-    if (server.homasocket != 0) {
+    if (server.homa_port != 0) {
         conn_index = connectionIndexByType(CONN_TYPE_HOMA);
         if (conn_index < 0)
             serverPanic("Failed finding connection listener of %s", CONN_TYPE_HOMA);
         listener = &server.listeners[conn_index];
         //listener->bindaddr = &server.homasocket;
         listener->bindaddr_count = 1;
-        listener->port = server.homasocket;
+        listener->port = server.homa_port;
         listener->ct = connectionByType(CONN_TYPE_HOMA);
-        listener->priv = &server.unixsocketperm; /* Unix socket specified */
+    }
+    if (server.homals_port != 0) {
+        conn_index = connectionIndexByType(CONN_TYPE_HOMALS);
+        if (conn_index < 0)
+            serverPanic("Failed finding connection listener of %s", CONN_TYPE_HOMALS);
+        listener = &server.listeners[conn_index];
+        //listener->bindaddr = &server.homasocket;
+        listener->bindaddr_count = 1;
+        listener->port = server.homals_port;
+        listener->ct = connectionByType(CONN_TYPE_HOMALS);
     }
 
     /* create all the configured listener, and add handler to start to accept */

@@ -1666,7 +1666,9 @@ static int cliConnect(int flags) {
         /* Do not use hostsocket when we got redirected in cluster mode */
         if (config.hostsocket == NULL ||
             (config.cluster_mode && config.cluster_reissue_command)) {
-	    if (config.conn_info.hostport == 8888)
+	    if (config.conn_info.hostport == 8886)
+                context = redisConnectHoma(config.conn_info.hostip,config.conn_info.hostport);
+	    else if (config.conn_info.hostport == 8887)
                 context = redisConnectHoma(config.conn_info.hostip,config.conn_info.hostport);
             else
                 context = redisConnect(config.conn_info.hostip,config.conn_info.hostport);

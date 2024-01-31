@@ -40,18 +40,18 @@ static const char *connHomaLsGetType(connection *conn) {
 
 static void connHomaLsEventHandler(struct aeEventLoop *el, int fd, void *clientData, int mask) {
 //serverLog(LL_NOTICE, "connHomaLsEventHandler");
-    connectionTypeHomaLs()->ae_handler(el, fd, clientData, mask);
+    connectionTypeHoma()->ae_handler(el, fd, clientData, mask);
 }
 
 static int connHomaLsAddr(connection *conn, char *ip, size_t ip_len, int *port, int remote) {
 //serverLog(LL_NOTICE, "connHomaLsAddr");
-    return connectionTypeHomaLs()->addr(conn, ip, ip_len, port, remote);
+    return connectionTypeHoma()->addr(conn, ip, ip_len, port, remote);
 }
 
 static int connHomaLsIsLocal(connection *conn) {
     UNUSED(conn);
 
-    return 1; /* Homa socket is always local connection */
+    return 1; /* HomaLs socket is always local connection */
 }
 
 static int connHomaLsListen(connListener *listener) {
@@ -61,7 +61,7 @@ static int connHomaLsListen(connListener *listener) {
     if (listener->bindaddr_count == 0)
         return C_OK;
 
-    /* currently listener->bindaddr_count is always 1, we still use a loop here in case Redis supports multi Homa socket in the future */
+    /* currently listener->bindaddr_count is always 1, we still use a loop here in case Redis supports multi HomaLs socket in the future */
     for (int j = 0; j < listener->bindaddr_count; j++) {
         struct sockaddr_in *addr = zcalloc(sizeof(struct sockaddr_in)); // TODO where to free this?
         memset(addr, 0, sizeof(struct sockaddr_in));
@@ -80,7 +80,7 @@ static int connHomaLsListen(connListener *listener) {
             exit(1);
         }
 
-        if (init_recv_args_per_conn(fd, (char**)&listener->priv) != 0) {
+        if (init_recv_args_per_conn(fd, &homa_recv_buf[fd]) < 0) {
             serverLog(LL_WARNING, "Couldn't init HomaLs recv buffer: %s", strerror(errno));
             exit(1);
         }
@@ -100,7 +100,7 @@ static connection *connCreateHomaLs(void) {
     conn->fd = -1;
     //conn->iovcnt = IOV_MAX;
     conn->iovcnt = 1024;
-//serverLog(LL_NOTICE, "connCreateHoma");
+//serverLog(LL_NOTICE, "connCreateHomaLs");
     return conn;
 }
 
@@ -109,7 +109,8 @@ static connection *connCreateAcceptedHomaLs(int fd, void *priv) {
     connection *conn = connCreateHomaLs();
     conn->fd = fd;
     conn->state = CONN_STATE_ACCEPTING;
-    serverLog(LL_NOTICE,"Accepted connection to HomaLS fd=%d", fd);
+    conn->saddr = zmalloc(sizeof(struct sockaddr_in));
+    serverLog(LL_NOTICE,"Accepted connection to HomaLs fd=%d", fd);
     return conn;
 }
 
@@ -120,20 +121,23 @@ static void connHomaLsAcceptHandler(aeEventLoop *el, int fd, void *privdata, int
     UNUSED(privdata);
 
     // TODO somehow add this conn to a data structure
-    serverLog(LL_NOTICE,"Accepting connection to HomaLS fd=%d", fd);
+    serverLog(LL_NOTICE,"Accepting connection to HomaLs fd=%d", fd);
     acceptCommonHandler(connCreateAcceptedHomaLs(fd, NULL),0,NULL);  // we dont care about special handling for now
 }
 
 static void connHomaLsShutdown(connection *conn) {
+//serverLog(LL_NOTICE, "connSetHomaLsShutdown");
     connectionTypeHoma()->shutdown(conn);
 }
 
 static void connHomaLsClose(connection *conn) {
+//serverLog(LL_NOTICE, "connSetHomaLsClose");
 // TODO connectionless, never close server FD. instead remove from data structure
-    return connectionTypeHoma()->close(conn);
+    //connectionTypeTcp()->close(conn);
 }
 
 static int connHomaLsAccept(connection *conn, ConnectionCallbackFunc accept_handler) {
+printf("connHomaLsAccept\n");
 // TODO add server fd to epoll loop again -> CTRL_MOD, should be fine?
     return connectionTypeHoma()->accept(conn, accept_handler);
 }
@@ -147,14 +151,17 @@ static int connHomaLsWritev(connection *conn, const struct iovec *iov, int iovcn
 }
 
 static int connHomaLsRead(connection *conn, void *buf, size_t buf_len) {
+//serverLog(LL_NOTICE, "connHomaLsRead");
     return connectionTypeHoma()->read(conn, buf, buf_len);
 }
 
 static int connHomaLsSetWriteHandler(connection *conn, ConnectionCallbackFunc func, int barrier) {
+//serverLog(LL_NOTICE, "connHomaLsSetWriteHandler");
     return connectionTypeHoma()->set_write_handler(conn, func, barrier);
 }
 
 static int connHomaLsSetReadHandler(connection *conn, ConnectionCallbackFunc func) {
+//serverLog(LL_NOTICE, "connHomaLsReadHandler");
     return connectionTypeHoma()->set_read_handler(conn, func);
 }
 

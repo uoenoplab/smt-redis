@@ -1591,7 +1591,8 @@ struct redisServer {
     int bindaddr_count;         /* Number of addresses in server.bindaddr[] */
     char *bind_source_addr;     /* Source address to bind on for outgoing connections */
     char *unixsocket;           /* UNIX socket path */
-    int homasocket;           /* homa socket port */
+    int homa_port;              /* homa socket port */
+    int homals_port;            /* homals socket port */
     unsigned int unixsocketperm; /* UNIX socket permission (see mode_t) */
     connListener listeners[CONN_TYPE_MAX]; /* TCP/Unix/TLS even more types */
     uint32_t socket_mark_id;    /* ID for listen socket marking */

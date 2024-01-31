@@ -66,6 +66,7 @@ int connTypeInitialize(void) {
 
     /* currently homa socket connection type is necessary  */
     serverAssert(RedisRegisterConnectionTypeHoma() == C_OK);
+    serverAssert(RedisRegisterConnectionTypeHomaLs() == C_OK);
 
     /* may fail if without BUILD_TLS=yes */
     RedisRegisterConnectionTypeTLS();
