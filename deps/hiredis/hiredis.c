@@ -789,9 +789,9 @@ int redisReconnect(redisContext *c) {
     if (c->connection_type == REDIS_CONN_TCP) {
         ret = redisContextConnectBindTcp(c, c->tcp.host, c->tcp.port,
                c->connect_timeout, c->tcp.source_addr);
-    } else if (c->connection_type == REDIS_CONN_HOMA) {
+    } else if (c->connection_type == REDIS_CONN_HOMA || c->connection_type == REDIS_CONN_HOMALS) {
         ret = redisContextConnectBindHoma(c, c->tcp.host, c->tcp.port,
-               c->connect_timeout, c->tcp.source_addr);
+               c->connect_timeout, c->tcp.source_addr, c->connection_type);
     } else if (c->connection_type == REDIS_CONN_UNIX) {
         ret = redisContextConnectUnix(c, c->unix_sock.path, c->connect_timeout);
     } else {
@@ -855,11 +855,11 @@ redisContext *redisConnectWithOptions(const redisOptions *options) {
     } else if (options->type == REDIS_CONN_UNIX) {
         redisContextConnectUnix(c, options->endpoint.unix_socket,
                                 options->connect_timeout);
-    } else if (options->type == REDIS_CONN_HOMA) {
-//        printf("Connecting with Homa to %s:%d\n", options->endpoint.tcp.ip, options->endpoint.tcp.port);
+    } else if (options->type == REDIS_CONN_HOMA || options->type == REDIS_CONN_HOMALS) {
         redisContextConnectBindHoma(c, options->endpoint.tcp.ip,
                                    options->endpoint.tcp.port, options->connect_timeout,
-                                   options->endpoint.tcp.source_addr);
+                                   options->endpoint.tcp.source_addr,
+                                   options->type);
     } else if (options->type == REDIS_CONN_USERFD) {
         c->fd = options->endpoint.fd;
         c->flags |= REDIS_CONNECTED;
@@ -945,11 +945,20 @@ redisContext *redisConnectFd(redisFD fd) {
     return redisConnectWithOptions(&options);
 }
 
-// connect homa socket
+// connect Homa socket
 redisContext *redisConnectHoma(const char *ip, int port) {
     redisOptions options = {0};
     REDIS_OPTIONS_SET_HOMA(&options, ip, port);
     //options.options |= REDIS_OPT_NONBLOCK;
+    return redisConnectWithOptions(&options);
+}
+
+// connect HomaLs socket
+redisContext *redisConnectHomaLs(const char *ip, int port) {
+    redisOptions options = {0};
+    REDIS_OPTIONS_SET_HOMALS(&options, ip, port);
+    //options.options |= REDIS_OPT_NONBLOCK;
+printf("connecting to homals\n");
     return redisConnectWithOptions(&options);
 }
 

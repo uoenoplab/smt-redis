@@ -149,6 +149,7 @@ enum redisConnectionType {
     REDIS_CONN_TCP,
     REDIS_CONN_UNIX,
     REDIS_CONN_HOMA,
+    REDIS_CONN_HOMALS,
     REDIS_CONN_USERFD
 };
 
@@ -246,6 +247,12 @@ typedef struct {
         (opts)->endpoint.tcp.port = port_;           \
     } while(0)
 
+#define REDIS_OPTIONS_SET_HOMALS(opts, ip_, port_) do { \
+        (opts)->type = REDIS_CONN_HOMALS;            \
+        (opts)->endpoint.tcp.ip = ip_;               \
+        (opts)->endpoint.tcp.port = port_;           \
+    } while(0)
+
 typedef struct redisContextFuncs {
     void (*close)(struct redisContext *);
     void (*free_privctx)(void *);
@@ -320,6 +327,7 @@ redisContext *redisConnectUnixWithTimeout(const char *path, const struct timeval
 redisContext *redisConnectUnixNonBlock(const char *path);
 redisContext *redisConnectFd(redisFD fd);
 redisContext *redisConnectHoma(const char *ip, int port);
+redisContext *redisConnectHomaLs(const char *ip, int port);
 
 /**
  * Reconnect the given context using the saved information.

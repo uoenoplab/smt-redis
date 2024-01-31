@@ -88,7 +88,7 @@ static int connHomaListen(connListener *listener) {
         anetNonBlock(NULL, fd);
         anetCloexec(fd);
         listener->fd[listener->count++] = fd;
-serverLog(LL_NOTICE, "Homa now listening to fd=%d binded to port=%d", fd, listener->port);
+        serverLog(LL_NOTICE, "Homa now listening to fd=%d binded to port=%d", fd, listener->port);
     }
 
     return C_OK;
@@ -121,7 +121,6 @@ static void connHomaAcceptHandler(aeEventLoop *el, int fd, void *privdata, int m
     UNUSED(privdata);
 
     // TODO somehow add this conn to a data structure
-    serverLog(LL_NOTICE,"Accepting connection to homa fd=%d", fd);
     acceptCommonHandler(connCreateAcceptedHoma(fd, NULL),0,NULL);  // we dont care about special handling for now
 }
 
@@ -137,13 +136,20 @@ static void connHomaClose(connection *conn) {
 }
 
 static int connHomaAccept(connection *conn, ConnectionCallbackFunc accept_handler) {
-printf("connHomaAccept\n");
 // TODO add server fd to epoll loop again -> CTRL_MOD, should be fine?
     return connectionTypeTcp()->accept(conn, accept_handler);
 }
 
 static int connHomaWrite(connection *conn, const void *data, size_t data_len) {
-//serverLog(LL_NOTICE, "connHomaWrite");
+//    char client_ip[INET_ADDRSTRLEN];
+//    if (inet_ntop(AF_INET, &conn->saddr->sin_addr, client_ip, INET_ADDRSTRLEN) == NULL) {
+//        serverLog(LL_NOTICE, "Couldn't convert client address to string (inet_ntop): %s", strerror(errno));
+//        return -1;
+//    }
+//
+//    serverLog(LL_NOTICE, "sending %ld bytes to fd=%d (ip %s, port %hu, rpcid %ld):",
+//        data_len, conn->fd, client_ip, ntohs(conn->saddr->sin_port), conn->homa_control.id);
+
     int ret = homa_reply(conn->fd, data, data_len, (sockaddr_in_union *)conn->saddr, conn->homa_control.id);
     if (ret < 0) {
         serverLog(LL_WARNING, "connHomaWrite: homa_reply error: %s", strerror(errno));
@@ -208,14 +214,13 @@ static int connHomaRead(connection *conn, void *buf, size_t buf_len) {
         exit(1);
     }
 
-
-    char client_ip[INET_ADDRSTRLEN];
-    if (inet_ntop(AF_INET, &(conn->saddr->sin_addr), client_ip, INET_ADDRSTRLEN) == NULL) {
-        serverLog(LL_NOTICE, "Couldn't convert client address to string (inet_ntop): %s", strerror(errno));
-        return -1;
-    }
-    serverLog(LL_NOTICE, "Server recv (ip %s, port %hu, reqlen %ld, rpcid %ld, num_bpages %d):",
-        client_ip, ntohs(conn->saddr->sin_port), reqlen, conn->homa_control.id, conn->homa_control.num_bpages);
+//    char client_ip[INET_ADDRSTRLEN];
+//    if (inet_ntop(AF_INET, &(conn->saddr->sin_addr), client_ip, INET_ADDRSTRLEN) == NULL) {
+//        serverLog(LL_NOTICE, "Couldn't convert client address to string (inet_ntop): %s", strerror(errno));
+//        return -1;
+//    }
+//    serverLog(LL_NOTICE, "Server recv (ip %s, port %hu, reqlen %ld, rpcid %ld, num_bpages %d):",
+//        client_ip, ntohs(conn->saddr->sin_port), reqlen, conn->homa_control.id, conn->homa_control.num_bpages);
     memcpy(buf, &homa_recv_buf[conn->fd][conn->homa_control.bpage_offsets[0]], reqlen);
 //serverLog(LL_NOTICE, "%s\n", (char*)buf);
 

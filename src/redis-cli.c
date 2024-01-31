@@ -1669,10 +1669,9 @@ static int cliConnect(int flags) {
 	    if (config.conn_info.hostport == 8886)
                 context = redisConnectHoma(config.conn_info.hostip,config.conn_info.hostport);
 	    else if (config.conn_info.hostport == 8887)
-                context = redisConnectHoma(config.conn_info.hostip,config.conn_info.hostport);
+                context = redisConnectHomaLs(config.conn_info.hostip,config.conn_info.hostport);
             else
                 context = redisConnect(config.conn_info.hostip,config.conn_info.hostport);
-//printf("Got context to connect to Homa\n");
         } else {
             context = redisConnectUnix(config.hostsocket);
         }

@@ -85,10 +85,15 @@ static int connHomaLsListen(connListener *listener) {
             exit(1);
         }
 
+        if (homals_setsockopt_wrapper(fd, 0, 0, 1, 0) < 0) {
+            serverLog(LL_WARNING, "Couldn't init HomaLs recv buffer: %s", strerror(errno));
+            exit(1);
+        }
+
         anetNonBlock(NULL, fd);
         anetCloexec(fd);
         listener->fd[listener->count++] = fd;
-serverLog(LL_NOTICE, "HomaLs now listening to fd=%d binded to port=%d", fd, listener->port);
+        serverLog(LL_NOTICE, "HomaLs now listening to fd=%d binded to port=%d", fd, listener->port);
     }
 
     return C_OK;
@@ -121,7 +126,6 @@ static void connHomaLsAcceptHandler(aeEventLoop *el, int fd, void *privdata, int
     UNUSED(privdata);
 
     // TODO somehow add this conn to a data structure
-    serverLog(LL_NOTICE,"Accepting connection to HomaLs fd=%d", fd);
     acceptCommonHandler(connCreateAcceptedHomaLs(fd, NULL),0,NULL);  // we dont care about special handling for now
 }
 
@@ -137,7 +141,6 @@ static void connHomaLsClose(connection *conn) {
 }
 
 static int connHomaLsAccept(connection *conn, ConnectionCallbackFunc accept_handler) {
-printf("connHomaLsAccept\n");
 // TODO add server fd to epoll loop again -> CTRL_MOD, should be fine?
     return connectionTypeHoma()->accept(conn, accept_handler);
 }

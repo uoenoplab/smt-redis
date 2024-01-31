@@ -687,8 +687,10 @@ static client createClient(char *cmd, size_t len, client from, int thread_id) {
             port = node->port;
             c->cluster_node = node;
         }
-        if (port == 8888)
+        if (port == 8886)
             c->context = redisConnectHoma(ip,port);
+	else if (port == 8887)
+            c->context = redisConnectHomaLs(ip,port);
         else
             c->context = redisConnectNonBlock(ip,port);
     } else {

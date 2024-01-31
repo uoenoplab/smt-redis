@@ -48,6 +48,7 @@
 #include "win32.h"
 
 #include "homa.h"
+#include "homals.h"
 #include "homa_hl.h"
 
 /* Defined in hiredis.c */
@@ -79,7 +80,6 @@ static ssize_t redisHomaRead(redisContext *c, char *buf, size_t bufcap) {
 //printf("trying to read %ld bytes from fd=%d with rpcid=%ld\n", bufcap, c->fd, control.id);
     // TODO how to handle how much to read??
     c->homa_control.flags = HOMA_RECVMSG_RESPONSE;
-    c->homa_control.id = 0;
 
     struct msghdr hdr;
     memset(&hdr, 0, sizeof(hdr));
@@ -100,7 +100,7 @@ static ssize_t redisHomaRead(redisContext *c, char *buf, size_t bufcap) {
 
     if (nread > bufcap) {
         printf("Error: read %s than bufcap!!!\n", nread > bufcap ? "more" : "less");
-	exit(1);
+        exit(1);
     }
 
 //printf("Homa Received from server (ip %s, port %hu, reqlen %ld, rpcid %ld, num_bpages %d offset: %d): ",
@@ -752,7 +752,7 @@ oom:
 
 static int _redisContextConnectHoma(redisContext *c, const char *addr, int port,
                                    const struct timeval *timeout,
-                                   const char *source_addr) {
+                                   const char *source_addr, int connection_type) {
     redisFD s;
     int rv, n;
     char _port[6];  /* strlen("65535"); */
@@ -878,10 +878,19 @@ static int _redisContextConnectHoma(redisContext *c, const char *addr, int port,
         memcpy(c->saddr, p->ai_addr, p->ai_addrlen);
         c->addrlen = p->ai_addrlen;
 
-	// now we "connect" to homa socket
+        // now we "connect" to homa socket
         if (init_recv_args_per_conn(c->fd, &c->homa_recv_buf_region) != 0) {
             printf("Failed to init homa recv buffer\n");
             goto error;
+        }
+
+        // set key if using homals
+        if (connection_type == REDIS_CONN_HOMALS) {
+            if (homals_setsockopt_wrapper(c->fd, 0, 0, 0, 0) != 0) {
+                printf("Failed to init HomaLS Key\n");
+                goto error;
+            }
+            printf("Setting HomaLS key...\n");
         }
 
         if (blocking && redisSetBlocking(c,1) != REDIS_OK)
@@ -913,6 +922,10 @@ end:
 
 int redisContextConnectBindHoma(redisContext *c, const char *addr, int port,
                                const struct timeval *timeout,
-                               const char *source_addr) {
-    return _redisContextConnectHoma(c, addr, port, timeout, source_addr);
+                               const char *source_addr,
+                               int connection_type) {
+    if (connection_type != REDIS_CONN_HOMA && connection_type != REDIS_CONN_HOMALS) {
+        printf("redisContextConnectBindHoma: wrong connection type!\n");
+    }
+    return _redisContextConnectHoma(c, addr, port, timeout, source_addr, connection_type);
 }
