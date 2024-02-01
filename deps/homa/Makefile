@@ -2,7 +2,7 @@
 
 CC = gcc
 
-OBJS = homa_api.o homa_hl.o
+OBJS = homa_api.o homals_api.o homa_hl.o
 CFLAGS = -g -O3 -Wall
 
 all: libhoma.a
@@ -11,7 +11,7 @@ all: libhoma.a
 	$(CC) -fPIC -c -o $@ $< $(CFLAGS)
 
 libhoma.a: $(OBJS)
-	ar rcs $@ homa_api.o homa_hl.o
+	ar rcs $@ $(OBJS)
 
 clean:
 	-rm -f $(OBJS) libhoma.a

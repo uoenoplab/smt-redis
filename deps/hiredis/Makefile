@@ -162,10 +162,10 @@ sockcompat.o: sockcompat.c sockcompat.h
 test.o: test.c fmacros.h hiredis.h read.h sds.h alloc.h net.h sockcompat.h win32.h
 
 $(DYLIBNAME): $(OBJ)
-	$(DYLIB_MAKE_CMD) -o $(DYLIBNAME) $(OBJ) ../homa/libhoma.a $(REAL_LDFLAGS)
+	$(DYLIB_MAKE_CMD) -o $(DYLIBNAME) $(OBJ) $(REAL_LDFLAGS)
 
 $(STLIBNAME): $(OBJ)
-	$(STLIB_MAKE_CMD) $(STLIBNAME) $(OBJ) ../homa/libhoma.a
+	$(STLIB_MAKE_CMD) $(STLIBNAME) $(OBJ)
 
 #################### SSL building rules start ####################
 $(SSL_DYLIBNAME): $(SSL_OBJ)
@@ -211,7 +211,7 @@ hiredis-example-ae:
 	@false
 else
 hiredis-example-ae: examples/example-ae.c adapters/ae.h $(STLIBNAME)
-	$(CC) -o examples/$@ $(REAL_CFLAGS) $(REAL_LDFLAGS) -I. -I$(AE_DIR) $< $(AE_DIR)/ae.o $(AE_DIR)/zmalloc.o $(AE_DIR)/../deps/jemalloc/lib/libjemalloc.a $(AE_DIR)/../deps/jemalloc/lib/libhoma.a -pthread $(STLIBNAME)
+	$(CC) -o examples/$@ $(REAL_CFLAGS) $(REAL_LDFLAGS) -I. -I$(AE_DIR) $< $(AE_DIR)/ae.o $(AE_DIR)/zmalloc.o $(AE_DIR)/../deps/jemalloc/lib/libjemalloc.a $(AE_DIR)/../deps/homa/libhoma.a -pthread $(STLIBNAME)
 endif
 
 ifndef LIBUV_DIR

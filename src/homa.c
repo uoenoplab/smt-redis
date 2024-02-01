@@ -96,6 +96,8 @@ static int connHomaListen(connListener *listener) {
 
 static connection *connCreateHoma(void) {
     connection *conn = zcalloc(sizeof(connection));
+    memset(&conn->homa_control, 0, sizeof(struct homa_recvmsg_args));
+    conn->saddr = zmalloc(sizeof(struct sockaddr_in));
     conn->type = &CT_Homa;
     conn->fd = -1;
     //conn->iovcnt = IOV_MAX;
@@ -109,7 +111,6 @@ static connection *connCreateAcceptedHoma(int fd, void *priv) {
     connection *conn = connCreateHoma();
     conn->fd = fd;
     conn->state = CONN_STATE_ACCEPTING;
-    conn->saddr = zmalloc(sizeof(struct sockaddr_in));
     serverLog(LL_NOTICE,"Accepted connection to homa fd=%d", fd);
     return conn;
 }
@@ -191,7 +192,6 @@ static int connHomaRead(connection *conn, void *buf, size_t buf_len) {
     ssize_t reqlen = 0;
     int ret = 0;
 
-    memset(&conn->homa_control, 0, sizeof(struct homa_recvmsg_args));
     conn->homa_control.flags = HOMA_RECVMSG_REQUEST;
     conn->homa_control.id = 0;
 
