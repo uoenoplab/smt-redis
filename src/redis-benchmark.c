@@ -259,8 +259,10 @@ static redisContext *getRedisContext(const char *ip, int port,
     redisContext *ctx = NULL;
     redisReply *reply =  NULL;
     if (hostsocket == NULL)
-        if (port == 8888)
+        if (port == 8886)
             ctx = redisConnectHoma(ip, port);
+        else if (port == 8887)
+            ctx = redisConnectHomaLs(ip, port);
         else
             ctx = redisConnect(ip, port);
     else
