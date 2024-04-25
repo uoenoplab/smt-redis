@@ -82,7 +82,7 @@ int anetSetBlock(char *err, int fd, int non_block) {
         return ANET_ERR;
     }
 
-    /* Check if this flag has been set or unset, if so, 
+    /* Check if this flag has been set or unset, if so,
      * then there is no need to call fcntl to set/unset it again. */
     if (!!(flags & O_NONBLOCK) == !!non_block)
         return ANET_OK;
@@ -107,8 +107,8 @@ int anetBlock(char *err, int fd) {
     return anetSetBlock(err,fd,0);
 }
 
-/* Enable the FD_CLOEXEC on the given fd to avoid fd leaks. 
- * This function should be invoked for fd's on specific places 
+/* Enable the FD_CLOEXEC on the given fd to avoid fd leaks.
+ * This function should be invoked for fd's on specific places
  * where fork + execve system calls are called. */
 int anetCloexec(int fd) {
     int r;
@@ -547,6 +547,12 @@ static int anetGenericAccept(char *err, int s, struct sockaddr *sa, socklen_t *l
     return fd;
 }
 
+
+#include <sys/socket.h>
+#include <netinet/tcp.h>
+#include <linux/tls.h>
+#include <stdlib.h>
+
 /* Accept a connection and also make sure the socket is non-blocking, and CLOEXEC.
  * returns the new socket FD, or -1 on error. */
 int anetTcpAccept(char *err, int serversock, char *ip, size_t ip_len, int *port) {
@@ -565,6 +571,64 @@ int anetTcpAccept(char *err, int serversock, char *ip, size_t ip_len, int *port)
         if (ip) inet_ntop(AF_INET6,(void*)&(s->sin6_addr),ip,ip_len);
         if (port) *port = ntohs(s->sin6_port);
     }
+
+    printf("accepted %d, now make ktls\n", fd);
+
+    struct tls12_crypto_info_aes_gcm_128 crypto_info_send, crypto_info_read;
+
+    int server = 1;
+    int ret = 0;
+
+    unsigned char client_key_hardcode[16] = {0x8D, 0xD2, 0x30, 0xA7, 0x7A, 0x05, 0xEB, 0x71, 0x15, 0x91, 0x29, 0xBC, 0xBC, 0xF6, 0x42, 0x30};
+    unsigned char client_iv_hardcode[4] = {0x87, 0xC6, 0x35, 0xC8};
+    unsigned char server_key_hardcode[16] = {0x6C, 0xCF, 0x62, 0xFF, 0x4B, 0xE6, 0x14, 0x85, 0xD8, 0xBA, 0x29, 0xFE, 0x2E, 0x84, 0x7A, 0x7F};
+    unsigned char server_iv_hardcode[4] = {0xB9, 0xFA, 0x55, 0x83};
+    // SERVER_HANDSHAKE_TRAFFIC_SECRET 62b0c35c27be5f002ac005a910360682adebe3697cf47df70f9541f3fa43072c 362e38b385ae1fd42f52c9bd2bec1504fa533e920fba65d45cd17bd4fa56bfbf
+    // CLIENT_HANDSHAKE_TRAFFIC_SECRET 62b0c35c27be5f002ac005a910360682adebe3697cf47df70f9541f3fa43072c 81ae4d383eaaf193b3f87e45fc74f175d6e771c8448175a5ee09a72f6f2dadd8
+    // SERVER_TRAFFIC_SECRET_0 62b0c35c27be5f002ac005a910360682adebe3697cf47df70f9541f3fa43072c d0f12781a4b5d275645cd2d31e94d58f79f07f0aa87e9dfeb055a8809cc092d2
+    // CLIENT_TRAFFIC_SECRET_0 62b0c35c27be5f002ac005a910360682adebe3697cf47df70f9541f3fa43072c 7c15eefb93991b9419999d04abf2174852dc0033bcd4c635aa3111311125c272
+
+    unsigned char *local_iv = server ? server_iv_hardcode : client_iv_hardcode;
+    unsigned char *local_key = server ? server_key_hardcode : client_key_hardcode;
+    unsigned char *remote_iv = server ? client_iv_hardcode : server_iv_hardcode;
+    unsigned char *remote_key = server ? client_key_hardcode : server_key_hardcode;
+    uint64_t local_sequence_number = 0;
+    uint64_t remote_sequence_number = 0;
+
+    crypto_info_send.info.version = TLS_1_2_VERSION;
+    crypto_info_send.info.cipher_type = TLS_CIPHER_AES_GCM_128;
+
+    memcpy(crypto_info_send.iv, &local_sequence_number, TLS_CIPHER_AES_GCM_128_IV_SIZE);
+    memcpy(crypto_info_send.rec_seq, &local_sequence_number, TLS_CIPHER_AES_GCM_128_REC_SEQ_SIZE);
+    memcpy(crypto_info_send.key, local_key, TLS_CIPHER_AES_GCM_128_KEY_SIZE);
+    memcpy(crypto_info_send.salt, local_iv, TLS_CIPHER_AES_GCM_128_SALT_SIZE);
+
+    crypto_info_read.info.version = TLS_1_2_VERSION;
+    crypto_info_read.info.cipher_type = TLS_CIPHER_AES_GCM_128;
+
+    memcpy(crypto_info_read.iv, &remote_sequence_number, TLS_CIPHER_AES_GCM_128_IV_SIZE);
+    memcpy(crypto_info_read.rec_seq, &remote_sequence_number, TLS_CIPHER_AES_GCM_128_REC_SEQ_SIZE);
+    memcpy(crypto_info_read.key, remote_key, TLS_CIPHER_AES_GCM_128_KEY_SIZE);
+    memcpy(crypto_info_read.salt, remote_iv, TLS_CIPHER_AES_GCM_128_SALT_SIZE);
+
+    ret = setsockopt(fd, IPPROTO_TCP, TCP_ULP, "tls", sizeof("tls"));
+    if (ret) {
+        printf("KTLS fail: %s\n", strerror(errno));
+        exit(1);
+    }
+
+    ret = setsockopt(fd, SOL_TLS, TLS_TX, &crypto_info_send, sizeof(crypto_info_send));
+    if (ret < 0) {
+        printf("Couldn't set TLS_TX option on tcp tls module: %d %s\n", ret, strerror(errno));
+        exit(1);
+    }
+
+    ret = setsockopt(fd, SOL_TLS, TLS_RX, &crypto_info_read, sizeof(crypto_info_read));
+    if (ret < 0) {
+        printf("Couldn't set TLS_RX option values on tcp tls module: %d %s\n", ret, strerror(errno));
+        exit(1);
+    }
+
     return fd;
 }
 
