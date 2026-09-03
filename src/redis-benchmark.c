@@ -63,6 +63,7 @@ static struct config {
     cliConnInfo conn_info;
     const char *hostsocket;
     int tls;
+    int homa;                   /* drive load over Homa instead of TCP */
     struct cliSSLconfig sslconfig;
     int numclients;
     redisAtomic int liveclients;
@@ -221,7 +222,7 @@ static redisContext *getRedisContext(const char *ip, int port,
     redisContext *ctx = NULL;
     redisReply *reply =  NULL;
     if (hostsocket == NULL)
-        ctx = redisConnect(ip, port);
+        ctx = config.homa ? redisConnectHoma(ip, port) : redisConnect(ip, port);
     else
         ctx = redisConnectUnix(hostsocket);
     if (ctx == NULL || ctx->err) {
@@ -646,7 +647,8 @@ static client createClient(char *cmd, size_t len, client from, int thread_id) {
             port = node->port;
             c->cluster_node = node;
         }
-        c->context = redisConnectNonBlock(ip,port);
+        c->context = config.homa ? redisConnectHomaNonBlock(ip,port)
+                                 : redisConnectNonBlock(ip,port);
     } else {
         c->context = redisConnectUnixNonBlock(config.hostsocket);
     }
@@ -1510,6 +1512,8 @@ int parseOptions(int argc, char **argv) {
         } else if (!strcmp(argv[i],"--help")) {
             exit_status = 0;
             goto usage;
+        } else if (!strcmp(argv[i],"--homa")) {
+            config.homa = 1;
         #ifdef USE_OPENSSL
         } else if (!strcmp(argv[i],"--tls")) {
             config.tls = 1;

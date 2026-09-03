@@ -661,6 +661,7 @@ start_server {tags {"introspection"}} {
             set-proc-title
             cluster-config-file
             cluster-port
+            homa-port
             oom-score-adj
             oom-score-adj-values
             enable-protected-configs

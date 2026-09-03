@@ -68,6 +68,9 @@ int connTypeInitialize(void) {
     /* may fail if without BUILD_TLS=yes */
     RedisRegisterConnectionTypeTLS();
 
+    /* Homa transport (connectionless message transport) */
+    serverAssert(RedisRegisterConnectionTypeHoma() == C_OK);
+
     return C_OK;
 }
 

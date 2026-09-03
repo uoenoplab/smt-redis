@@ -185,6 +185,12 @@ redisAsyncContext *redisAsyncConnectWithOptions(const redisOptions *options) {
         return NULL;
     }
 
+    /* Homa may complete a later RPC's response first (SRPT), and in-order
+     * (private) receives never wake an event loop, so replies couldn't be
+     * matched to callbacks. */
+    if (c->connection_type == REDIS_CONN_HOMA && !c->err)
+        __redisSetError(c, REDIS_ERR_OTHER, "Async API not supported over Homa");
+
     ac = redisAsyncInitialize(c);
     if (ac == NULL) {
         redisFree(c);

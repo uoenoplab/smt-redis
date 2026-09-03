@@ -73,7 +73,7 @@ endif
 # modifies these variables in its Makefile.
 hiredis: .make-prerequisites
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR)
-	cd hiredis && $(MAKE) static $(HIREDIS_MAKE_FLAGS) HIREDIS_CFLAGS="$(DEPS_CFLAGS)" HIREDIS_LDFLAGS="$(DEPS_LDFLAGS)"
+	cd hiredis && $(MAKE) static $(HIREDIS_MAKE_FLAGS) HIREDIS_CFLAGS="$(DEPS_CFLAGS) -I../homa -D_DEFAULT_SOURCE" HIREDIS_LDFLAGS="$(DEPS_LDFLAGS)"
 
 .PHONY: hiredis
 
