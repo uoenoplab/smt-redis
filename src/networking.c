@@ -2484,11 +2484,12 @@ typedef struct ReplyIOV {
     int iovmax;             /* Maximum number of iovec entries allocated */
     int iovcnt;             /* Current number of iovec entries in use */
     size_t iov_bytes_len;   /* Total bytes across all iovec entries */
+    size_t iov_bytes_max;   /* Stop adding entries once this many bytes are in */
 } ReplyIOV;
 
 /* Check if the reply IOV has reached its limit yet. */
 static int replyIOVReachLimit(ReplyIOV *reply_iov) {
-    return reply_iov->iovcnt >= reply_iov->iovmax || reply_iov->iov_bytes_len >= NET_MAX_WRITES_PER_EVENT;
+    return reply_iov->iovcnt >= reply_iov->iovmax || reply_iov->iov_bytes_len >= reply_iov->iov_bytes_max;
 }
 
 /* Helper function to process encoded buffer and build iov array. */
@@ -2599,7 +2600,7 @@ static payloadHeader *processSentDataInEncodedBuffer(client *c, char *start_ptr,
 static int _writevToClient(client *c, ssize_t *nwritten) {
     int iovmax = min(IOV_MAX, c->conn->iovcnt);
     struct iovec iov[iovmax];
-    ReplyIOV reply_iov = {iov, iovmax};
+    ReplyIOV reply_iov = {iov, iovmax, 0, 0, c->conn->writev_max ? c->conn->writev_max : NET_MAX_WRITES_PER_EVENT};
 
     /* Add c->buf to iov array */
     if (c->bufpos > 0) {

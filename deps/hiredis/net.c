@@ -670,3 +670,192 @@ oom:
     __redisSetError(c, REDIS_ERR_OOM, "Out of memory");
     return REDIS_ERR;
 }
+
+/* ---- Homa transport (message-based, connectionless) -------------------
+ *
+ * Each command is one Homa RPC: redisHomaWrite sends the output buffer as a
+ * request, redisHomaBufferRead receives the whole response and feeds it to the
+ * reply parser straight from the receive pool. One in-flight RPC per context
+ * (id=0 receives it and recycles the previous message's bpages).
+ */
+#include <arpa/inet.h>
+#include "alloc.h"
+#include "homa_user.h"
+
+typedef struct homaClientState {
+    uint8_t *region;
+    size_t region_size;
+    struct homa_recvmsg_args ctl;
+    struct sockaddr_in dest;
+    int inflight;   /* a request was sent and its response not read yet */
+} homaClientState;
+
+/* free_privctx hook: redisFree calls it even when privctx is NULL. */
+static void redisHomaFree(void *privctx) {
+    homaClientState *h = privctx;
+    if (h == NULL)
+        return;
+    munmap(h->region, h->region_size);
+    hi_free(h);
+}
+
+/* Receive one whole response and feed it to the reply parser directly from the
+ * receive pool, one bpage fragment at a time: no staging buffer, and the whole
+ * message is consumed at once, so event-loop users never wait on an epoll
+ * event for a remainder. Called by redisBufferRead in place of funcs->read. */
+int redisHomaBufferRead(redisContext *c) {
+    homaClientState *h = c->privctx;
+    struct sockaddr_in from;
+    struct msghdr hdr = {0};
+
+    /* Homa ignores SO_RCVTIMEO: honour command_timeout (0 = none) with poll(). */
+    if ((c->flags & REDIS_BLOCK) && c->command_timeout) {
+        long ms = c->command_timeout->tv_sec * 1000 + c->command_timeout->tv_usec / 1000;
+        struct pollfd p = { .fd = c->fd, .events = POLLIN };
+        int r = ms > 0 ? poll(&p, 1, (int)ms) : 1;
+        if (r == 0) {
+            __redisSetError(c, REDIS_ERR_TIMEOUT, "recv timeout");
+            return REDIS_ERR;
+        }
+        if (r < 0) {
+            if (errno == EINTR)
+                return REDIS_OK;
+            __redisSetError(c, REDIS_ERR_IO, NULL);
+            return REDIS_ERR;
+        }
+    }
+
+    h->ctl.id = 0; /* receive any (one in flight) + recycle prior bpages */
+    hdr.msg_name = &from;
+    hdr.msg_namelen = sizeof(from);
+    hdr.msg_control = &h->ctl;
+    hdr.msg_controllen = sizeof(h->ctl);
+
+    ssize_t n = recvmsg(c->fd, &hdr, 0);
+    if (n < 0) {
+        if ((errno == EWOULDBLOCK && !(c->flags & REDIS_BLOCK)) || errno == EINTR)
+            return REDIS_OK; /* recoverable */
+        __redisSetError(c, REDIS_ERR_IO, NULL);
+        return REDIS_ERR;
+    }
+    h->inflight = 0;
+    if (n == 1 && h->region[h->ctl.bpage_offsets[0]] == HOMA_USER_NO_REPLY)
+        return REDIS_OK; /* an RPC that produced no reply (see homa_user.h) */
+    for (uint32_t i = 0; i < h->ctl.num_bpages; i++) {
+        size_t len = (i == h->ctl.num_bpages - 1) ? (size_t)n - (size_t)i * HOMA_BPAGE_SIZE
+                                                  : HOMA_BPAGE_SIZE;
+        if (redisReaderFeed(c->reader, (char *)h->region + h->ctl.bpage_offsets[i],
+                            len) != REDIS_OK) {
+            __redisSetError(c, c->reader->err, c->reader->errstr);
+            return REDIS_ERR;
+        }
+    }
+    return REDIS_OK;
+}
+
+static ssize_t redisHomaWrite(redisContext *c) {
+    homaClientState *h = c->privctx;
+    size_t len = hi_sdslen(c->obuf);
+    if (len > HOMA_MAX_MESSAGE_LENGTH) {
+        __redisSetError(c, REDIS_ERR_OTHER, "Request exceeds Homa's 1000000-byte message limit");
+        return -1;
+    }
+    /* One RPC in flight: Homa may complete a later, smaller response first
+     * (SRPT), and responses are matched to commands by arrival order. A blocking
+     * context reads the outstanding response into the reader first; a
+     * nonblocking one reports nothing written until it has read it. */
+    if (h->inflight) {
+        if (!(c->flags & REDIS_BLOCK))
+            return 0;
+        if (redisHomaBufferRead(c) != REDIS_OK)
+            return -1;
+        if (h->inflight)
+            return 0; /* EINTR: the caller retries */
+    }
+    ssize_t ret = homa_user_send(c->fd, c->obuf, len,
+                                 (struct sockaddr *)&h->dest, sizeof(h->dest), NULL);
+    if (ret < 0) {
+        if ((errno == EWOULDBLOCK && !(c->flags & REDIS_BLOCK)) || errno == EINTR)
+            return 0;
+        __redisSetError(c, REDIS_ERR_IO, NULL);
+        return -1;
+    }
+    h->inflight = 1;
+    /* Homa sendmsg sends the whole message atomically and returns 0 on
+     * success; report the full length so hiredis clears its output buffer. */
+    return (ssize_t)len;
+}
+
+/* Homa has no FIN: tell the server this peer is gone, as a TCP close would, so
+ * its session (db, MULTI, AUTH user) is freed now instead of at the idle reap.
+ * Otherwise a later socket that reuses the client port would inherit it. QUIT is
+ * sent fire-and-forget; if it is lost the server still reaps the peer. */
+static void redisHomaClose(redisContext *c) {
+    static const char quit[] = "*1\r\n$4\r\nQUIT\r\n";
+    homaClientState *h = c->privctx;
+    if (c->fd != REDIS_INVALID_FD && h)
+        homa_user_send(c->fd, quit, sizeof(quit) - 1,
+                       (struct sockaddr *)&h->dest, sizeof(h->dest), NULL);
+    redisNetClose(c);
+}
+
+static redisContextFuncs redisContextHomaFuncs = {
+    .close = redisHomaClose,
+    .free_privctx = redisHomaFree,
+    .async_read = NULL, /* async is refused in redisAsyncConnectWithOptions */
+    .async_write = NULL,
+    .read = NULL, /* reads go through redisHomaBufferRead */
+    .write = redisHomaWrite,
+};
+
+int redisContextConnectHoma(redisContext *c, const char *addr, int port,
+                            const struct timeval *timeout) {
+    (void)timeout;
+    homaClientState *h;
+    int fd;
+
+    /* TODO: c->tcp.host/port are not recorded and redisReconnect has no Homa
+     * branch, so a Homa context cannot be reconnected (TCP/Unix can). */
+    c->connection_type = REDIS_CONN_HOMA;
+
+    fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_HOMA);
+    if (fd == REDIS_INVALID_FD) {
+        __redisSetError(c, REDIS_ERR_IO, "Cannot create Homa socket");
+        return REDIS_ERR;
+    }
+
+    h = hi_calloc(1, sizeof(*h));
+    if (h == NULL) {
+        close(fd);
+        __redisSetError(c, REDIS_ERR_OOM, "Out of memory");
+        return REDIS_ERR;
+    }
+    if (homa_user_init_recv_buffer(fd, &h->region, &h->region_size, homa_user_client_bpages()) < 0) {
+        hi_free(h);
+        close(fd);
+        __redisSetError(c, REDIS_ERR_IO, "Cannot init Homa receive buffer");
+        return REDIS_ERR;
+    }
+
+    h->dest.sin_family = AF_INET;
+    h->dest.sin_port = htons(port);
+    if (inet_pton(AF_INET, addr, &h->dest.sin_addr) != 1) {
+        munmap(h->region, h->region_size);
+        hi_free(h);
+        close(fd);
+        __redisSetError(c, REDIS_ERR_OTHER, "Invalid Homa server address");
+        return REDIS_ERR;
+    }
+
+    c->fd = fd;
+    c->privctx = h;
+    c->funcs = &redisContextHomaFuncs;
+
+    /* Honor non-blocking mode so the fd can be driven by an event loop; the
+     * read/write callbacks then retry on EWOULDBLOCK, as redisNetRead/Write do. */
+    if (!(c->flags & REDIS_BLOCK) && redisSetBlocking(c, 0) != REDIS_OK)
+        return REDIS_ERR;
+
+    c->flags |= REDIS_CONNECTED;
+    return REDIS_OK;
+}

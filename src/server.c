@@ -2103,6 +2103,27 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     /* Handle writes with pending output buffers. */
     handleClientsWithPendingWrites();
 
+    /* A connection type may buffer output inside its write callbacks instead
+     * of sending it. Homa allows exactly one response message per RPC, so
+     * connHomaWrite/connHomaWritev only append reply pieces to a per-client
+     * buffer; the single sendmsg happens later, from the connection type's
+     * process_pending_data hook.
+     *
+     * That hook already ran at the top of beforeSleep(), and dont_sleep was
+     * computed there too -- both before handleClientsWithPendingWrites()
+     * produced this iteration's replies. The early check is enough upstream
+     * because TLS's pending data arises on the read side. Without re-checking
+     * here, the event loop would block in aeApiPoll() until the next timer
+     * (1000/hz ms, 100 ms by default) with a finished reply still unsent; a
+     * ping-pong client waiting for that reply never sends anything that would
+     * wake us, so every request would stall for a full timer period.
+     *
+     * So re-evaluate after the writes: if anything is buffered, poll without
+     * sleeping and let the next iteration's connTypeProcessPendingData() send
+     * it. Once the buffers are drained this is false again and the loop
+     * sleeps as usual, so this never turns into busy polling. */
+    dont_sleep |= connTypeHasPendingData(server.el);
+
     /* Check if IO thread replicas have any pending read or writes and send them
      * back to their threads if so. */
     putReplicasInPendingClientsToIOThreads();
@@ -3292,6 +3313,16 @@ void initListeners(void) {
         listener->bindaddr_count = 1;
         listener->ct = connectionByType(CONN_TYPE_UNIX);
         listener->priv = &server.unixsocketperm; /* Unix socket specified */
+    }
+    if (server.homa_port != 0) {
+        conn_index = connectionIndexByType(CONN_TYPE_HOMA);
+        if (conn_index < 0)
+            serverPanic("Failed finding connection listener of %s", CONN_TYPE_HOMA);
+        listener = &server.listeners[conn_index];
+        listener->bindaddr = server.bindaddr;
+        listener->bindaddr_count = server.bindaddr_count;
+        listener->port = server.homa_port;
+        listener->ct = connectionByType(CONN_TYPE_HOMA);
     }
 
     /* create all the configured listener, and add handler to start to accept */
@@ -4732,6 +4763,16 @@ int processCommand(client *c) {
             blockPostponeClientWithType(c, BLOCKED_POSTPONE_TRIM);
             return C_OK;
         }
+    }
+
+    /* A Homa request gets exactly one response and Homa can't push, so
+     * subscriptions and MONITOR, whose output arrives unrequested, are refused. */
+    if ((c->cmd->proc == subscribeCommand || c->cmd->proc == psubscribeCommand ||
+         c->cmd->proc == ssubscribeCommand || c->cmd->proc == monitorCommand) &&
+        connIsHoma(c->conn)) {
+        rejectCommandFormat(c, "%s is not supported over Homa, which cannot push replies",
+                            c->cmd->fullname);
+        return C_OK;
     }
 
     /* Only allow a subset of commands in the context of Pub/Sub if the

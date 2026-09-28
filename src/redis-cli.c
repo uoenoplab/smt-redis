@@ -204,6 +204,7 @@ static struct config {
     struct timeval connect_timeout;
     char *hostsocket;
     int tls;
+    int homa;                   /* connect over Homa instead of TCP */
     cliSSLconfig sslconfig;
     long repeat;
     long interval;
@@ -1721,7 +1722,9 @@ static int cliConnect(int flags) {
         }
 
         /* Do not use hostsocket when we got redirected in cluster mode */
-        if (config.hostsocket == NULL ||
+        if (config.homa) {
+            context = redisConnectHoma(config.conn_info.hostip, config.conn_info.hostport);
+        } else if (config.hostsocket == NULL ||
             (config.cluster_mode && config.cluster_reissue_command)) {
             context = redisConnectWrapper(config.conn_info.hostip, config.conn_info.hostport,
                                           config.connect_timeout);
@@ -3054,6 +3057,8 @@ static int parseOptions(int argc, char **argv) {
             config.test_hint_file = argv[++i];
         } else if (!strcmp(argv[i], "--name") && !lastarg) {
             config.client_name = argv[++i];
+        } else if (!strcmp(argv[i],"--homa")) {
+            config.homa = 1;
 #ifdef USE_OPENSSL
         } else if (!strcmp(argv[i],"--tls")) {
             config.tls = 1;
@@ -11273,9 +11278,19 @@ static void keyStats(long long memkeys_samples, unsigned long long cursor, unsig
  * Program main()
  *--------------------------------------------------------------------------- */
 
+/* On every exit path, not only the one-shot one: a Homa context tells the
+ * server it is gone (QUIT) only from redisFree; process exit alone sends
+ * nothing, unlike TCP's FIN. */
+static void cliFreeContext(void) {
+    if (context) redisFree(context);
+    context = NULL;
+}
+
 int main(int argc, char **argv) {
     int firstarg;
     struct timeval tv;
+
+    atexit(cliFreeContext);
 
     memset(&config.sslconfig, 0, sizeof(config.sslconfig));
     config.conn_info.hostip = sdsnew("127.0.0.1");

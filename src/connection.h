@@ -40,6 +40,7 @@ typedef enum {
 #define CONN_TYPE_SOCKET            "tcp"
 #define CONN_TYPE_UNIX              "unix"
 #define CONN_TYPE_TLS               "tls"
+#define CONN_TYPE_HOMA              "homa"
 #define CONN_TYPE_MAX               8           /* 8 is enough to be extendable */
 
 typedef void (*ConnectionCallbackFunc)(struct connection *conn);
@@ -109,6 +110,7 @@ struct connection {
     short int flags;
     short int refs;
     unsigned short int iovcnt;
+    unsigned int writev_max;    /* bytes one writev of replies may carry; 0 = NET_MAX_WRITES_PER_EVENT */
     void *private_data;
     struct aeEventLoop *el;
     ConnectionCallbackFunc conn_handler;
@@ -475,6 +477,9 @@ sds getListensInfoString(sds info);
 int RedisRegisterConnectionTypeSocket(void);
 int RedisRegisterConnectionTypeUnix(void);
 int RedisRegisterConnectionTypeTLS(void);
+int RedisRegisterConnectionTypeHoma(void);
+int homaBindAllowed(char **bindaddr, int count);
+int connIsHoma(connection *conn);
 
 /* Return 1 if connection is using TLS protocol, 0 if otherwise. */
 static inline int connIsTLS(connection *conn) {

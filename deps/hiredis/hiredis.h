@@ -147,7 +147,8 @@ void redisFreeSdsCommand(hisds cmd);
 enum redisConnectionType {
     REDIS_CONN_TCP,
     REDIS_CONN_UNIX,
-    REDIS_CONN_USERFD
+    REDIS_CONN_USERFD,
+    REDIS_CONN_HOMA
 };
 
 struct redisSsl;
@@ -228,6 +229,13 @@ typedef struct {
         (opts)->endpoint.tcp.port = port_;           \
     } while(0)
 
+/* Homa reuses the tcp endpoint fields to carry the destination ip/port. */
+#define REDIS_OPTIONS_SET_HOMA(opts, ip_, port_) do { \
+        (opts)->type = REDIS_CONN_HOMA;              \
+        (opts)->endpoint.tcp.ip = ip_;               \
+        (opts)->endpoint.tcp.port = port_;           \
+    } while(0)
+
 #define REDIS_OPTIONS_SET_UNIX(opts, path) do { \
         (opts)->type = REDIS_CONN_UNIX;         \
         (opts)->endpoint.unix_socket = path;    \
@@ -297,6 +305,8 @@ typedef struct redisContext {
 
 redisContext *redisConnectWithOptions(const redisOptions *options);
 redisContext *redisConnect(const char *ip, int port);
+redisContext *redisConnectHoma(const char *ip, int port);
+redisContext *redisConnectHomaNonBlock(const char *ip, int port);
 redisContext *redisConnectWithTimeout(const char *ip, int port, const struct timeval tv);
 redisContext *redisConnectNonBlock(const char *ip, int port);
 redisContext *redisConnectBindNonBlock(const char *ip, int port,
