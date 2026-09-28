@@ -3324,6 +3324,16 @@ void initListeners(void) {
         listener->port = server.homa_port;
         listener->ct = connectionByType(CONN_TYPE_HOMA);
     }
+    if (server.smt_port != 0) {
+        conn_index = connectionIndexByType(CONN_TYPE_SMT);
+        if (conn_index < 0)
+            serverPanic("Failed finding connection listener of %s", CONN_TYPE_SMT);
+        listener = &server.listeners[conn_index];
+        listener->bindaddr = server.bindaddr;
+        listener->bindaddr_count = server.bindaddr_count;
+        listener->port = server.smt_port;
+        listener->ct = connectionByType(CONN_TYPE_SMT);
+    }
 
     /* create all the configured listener, and add handler to start to accept */
     int listen_fds = 0;

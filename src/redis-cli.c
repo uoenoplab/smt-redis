@@ -205,6 +205,7 @@ static struct config {
     char *hostsocket;
     int tls;
     int homa;                   /* connect over Homa instead of TCP */
+    int smt;                    /* connect over SMT (encrypted Homa) */
     cliSSLconfig sslconfig;
     long repeat;
     long interval;
@@ -1722,7 +1723,9 @@ static int cliConnect(int flags) {
         }
 
         /* Do not use hostsocket when we got redirected in cluster mode */
-        if (config.homa) {
+        if (config.smt) {
+            context = redisConnectSmt(config.conn_info.hostip, config.conn_info.hostport);
+        } else if (config.homa) {
             context = redisConnectHoma(config.conn_info.hostip, config.conn_info.hostport);
         } else if (config.hostsocket == NULL ||
             (config.cluster_mode && config.cluster_reissue_command)) {
@@ -3059,6 +3062,8 @@ static int parseOptions(int argc, char **argv) {
             config.client_name = argv[++i];
         } else if (!strcmp(argv[i],"--homa")) {
             config.homa = 1;
+        } else if (!strcmp(argv[i],"--smt")) {
+            config.smt = 1;
 #ifdef USE_OPENSSL
         } else if (!strcmp(argv[i],"--tls")) {
             config.tls = 1;

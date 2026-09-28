@@ -49,6 +49,7 @@ int redisContextConnectBindTcp(redisContext *c, const char *addr, int port,
                                const char *source_addr);
 int redisContextConnectUnix(redisContext *c, const char *path, const struct timeval *timeout);
 int redisContextConnectHoma(redisContext *c, const char *addr, int port, const struct timeval *timeout);
+int redisContextConnectSmt(redisContext *c, const char *addr, int port, const struct timeval *timeout);
 int redisHomaBufferRead(redisContext *c);
 int redisKeepAlive(redisContext *c, int interval);
 int redisCheckConnectDone(redisContext *c, int *completed);

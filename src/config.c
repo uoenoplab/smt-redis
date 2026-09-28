@@ -2766,8 +2766,9 @@ static int applyBind(const char **err) {
     connListener *tls_listener = listenerByType(CONN_TYPE_TLS);
 
     /* Homa can't bind an address (see homaBindAllowed). */
-    if (server.homa_port && !homaBindAllowed(server.bindaddr, server.bindaddr_count)) {
-        *err = "homa-port listens on every interface: bind must include * or 0.0.0.0";
+    if ((server.homa_port || server.smt_port) &&
+        !homaBindAllowed(server.bindaddr, server.bindaddr_count)) {
+        *err = "homa-port/smt-port listen on every interface: bind must include * or 0.0.0.0";
         return 0;
     }
 
@@ -3514,6 +3515,7 @@ standardConfig static_configs[] = {
 
     createIntConfig("tls-port", NULL, MODIFIABLE_CONFIG, 0, 65535, server.tls_port, 0, INTEGER_CONFIG, NULL, applyTLSPort), /* TCP port. */
     createIntConfig("homa-port", NULL, IMMUTABLE_CONFIG, 0, 65535, server.homa_port, 0, INTEGER_CONFIG, NULL, NULL), /* Homa port (bound at startup). */
+    createIntConfig("smt-port", NULL, IMMUTABLE_CONFIG, 0, 65535, server.smt_port, 0, INTEGER_CONFIG, NULL, NULL), /* SMT port (bound at startup). */
     createIntConfig("tls-session-cache-size", NULL, MODIFIABLE_CONFIG, 0, INT_MAX, server.tls_ctx_config.session_cache_size, 20*1024, INTEGER_CONFIG, NULL, applyTlsCfg),
     createIntConfig("tls-session-cache-timeout", NULL, MODIFIABLE_CONFIG, 0, INT_MAX, server.tls_ctx_config.session_cache_timeout, 300, INTEGER_CONFIG, NULL, applyTlsCfg),
     createBoolConfig("tls-cluster", NULL, MODIFIABLE_CONFIG, server.tls_cluster, 0, NULL, applyTlsCluster),

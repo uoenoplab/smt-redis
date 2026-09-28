@@ -662,6 +662,7 @@ start_server {tags {"introspection"}} {
             cluster-config-file
             cluster-port
             homa-port
+            smt-port
             oom-score-adj
             oom-score-adj-values
             enable-protected-configs

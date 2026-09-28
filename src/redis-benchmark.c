@@ -64,6 +64,7 @@ static struct config {
     const char *hostsocket;
     int tls;
     int homa;                   /* drive load over Homa instead of TCP */
+    int smt;                    /* drive load over SMT (encrypted Homa) */
     struct cliSSLconfig sslconfig;
     int numclients;
     redisAtomic int liveclients;
@@ -222,7 +223,8 @@ static redisContext *getRedisContext(const char *ip, int port,
     redisContext *ctx = NULL;
     redisReply *reply =  NULL;
     if (hostsocket == NULL)
-        ctx = config.homa ? redisConnectHoma(ip, port) : redisConnect(ip, port);
+        ctx = config.smt ? redisConnectSmt(ip, port)
+             : config.homa ? redisConnectHoma(ip, port) : redisConnect(ip, port);
     else
         ctx = redisConnectUnix(hostsocket);
     if (ctx == NULL || ctx->err) {
@@ -647,7 +649,8 @@ static client createClient(char *cmd, size_t len, client from, int thread_id) {
             port = node->port;
             c->cluster_node = node;
         }
-        c->context = config.homa ? redisConnectHomaNonBlock(ip,port)
+        c->context = config.smt ? redisConnectSmtNonBlock(ip,port)
+                   : config.homa ? redisConnectHomaNonBlock(ip,port)
                                  : redisConnectNonBlock(ip,port);
     } else {
         c->context = redisConnectUnixNonBlock(config.hostsocket);
@@ -1514,6 +1517,8 @@ int parseOptions(int argc, char **argv) {
             goto usage;
         } else if (!strcmp(argv[i],"--homa")) {
             config.homa = 1;
+        } else if (!strcmp(argv[i],"--smt")) {
+            config.smt = 1;
         #ifdef USE_OPENSSL
         } else if (!strcmp(argv[i],"--tls")) {
             config.tls = 1;

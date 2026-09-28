@@ -3,7 +3,7 @@
 # Copyright (C) 2010-2011 Pieter Noordhuis <pcnoordhuis at gmail dot com>
 # This file is released under the BSD license, see the COPYING file
 
-OBJ=alloc.o net.o hiredis.o sds.o async.o read.o sockcompat.o
+OBJ=alloc.o net.o hiredis.o sds.o async.o read.o sockcompat.o smt_uapi.o
 EXAMPLES=hiredis-example hiredis-example-libevent hiredis-example-libev hiredis-example-glib hiredis-example-push hiredis-example-poll
 TESTS=hiredis-test
 LIBNAME=libhiredis
@@ -273,6 +273,10 @@ check: hiredis-test
 
 .c.o:
 	$(CC) -std=c99 -c $(REAL_CFLAGS) $<
+
+# SMT uapi helper lives one dir up with the vendored Homa headers.
+smt_uapi.o: ../homa/smt_uapi.c ../homa/smt_uapi.h
+	$(CC) -std=c99 -c $(REAL_CFLAGS) -o $@ $<
 
 clean:
 	rm -rf $(DYLIBNAME) $(STLIBNAME) $(SSL_DYLIBNAME) $(SSL_STLIBNAME) $(TESTS) $(PKGCONFNAME) examples/hiredis-example* *.o *.gcda *.gcno *.gcov

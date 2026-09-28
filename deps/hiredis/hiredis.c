@@ -855,6 +855,9 @@ redisContext *redisConnectWithOptions(const redisOptions *options) {
     } else if (options->type == REDIS_CONN_HOMA) {
         redisContextConnectHoma(c, options->endpoint.tcp.ip,
                                 options->endpoint.tcp.port, options->connect_timeout);
+    } else if (options->type == REDIS_CONN_SMT) {
+        redisContextConnectSmt(c, options->endpoint.tcp.ip,
+                               options->endpoint.tcp.port, options->connect_timeout);
     } else if (options->type == REDIS_CONN_USERFD) {
         c->fd = options->endpoint.fd;
         c->flags |= REDIS_CONNECTED;
@@ -891,6 +894,20 @@ redisContext *redisConnectHoma(const char *ip, int port) {
 redisContext *redisConnectHomaNonBlock(const char *ip, int port) {
     redisOptions options = {0};
     REDIS_OPTIONS_SET_HOMA(&options, ip, port);
+    options.options |= REDIS_OPT_NONBLOCK;
+    return redisConnectWithOptions(&options);
+}
+
+/* Connect to a Redis instance over SMT (Homa + kernel-TLS key). */
+redisContext *redisConnectSmt(const char *ip, int port) {
+    redisOptions options = {0};
+    REDIS_OPTIONS_SET_SMT(&options, ip, port);
+    return redisConnectWithOptions(&options);
+}
+
+redisContext *redisConnectSmtNonBlock(const char *ip, int port) {
+    redisOptions options = {0};
+    REDIS_OPTIONS_SET_SMT(&options, ip, port);
     options.options |= REDIS_OPT_NONBLOCK;
     return redisConnectWithOptions(&options);
 }
@@ -995,7 +1012,7 @@ int redisBufferRead(redisContext *c) {
     if (c->err)
         return REDIS_ERR;
 
-    if (c->connection_type == REDIS_CONN_HOMA)
+    if (c->connection_type == REDIS_CONN_HOMA || c->connection_type == REDIS_CONN_SMT)
         return redisHomaBufferRead(c);
 
     nread = c->funcs->read(c, buf, sizeof(buf));

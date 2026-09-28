@@ -71,6 +71,9 @@ int connTypeInitialize(void) {
     /* Homa transport (connectionless message transport) */
     serverAssert(RedisRegisterConnectionTypeHoma() == C_OK);
 
+    /* SMT transport (Homa + kernel-TLS key) */
+    serverAssert(RedisRegisterConnectionTypeSmt() == C_OK);
+
     return C_OK;
 }
 

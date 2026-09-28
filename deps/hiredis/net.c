@@ -681,6 +681,7 @@ oom:
 #include <arpa/inet.h>
 #include "alloc.h"
 #include "homa_user.h"
+#include "smt_uapi.h"
 
 typedef struct homaClientState {
     uint8_t *region;
@@ -808,15 +809,15 @@ static redisContextFuncs redisContextHomaFuncs = {
     .write = redisHomaWrite,
 };
 
-int redisContextConnectHoma(redisContext *c, const char *addr, int port,
-                            const struct timeval *timeout) {
+static int redisContextConnectHomaInternal(redisContext *c, const char *addr, int port,
+                                           const struct timeval *timeout, int smt) {
     (void)timeout;
     homaClientState *h;
     int fd;
 
     /* TODO: c->tcp.host/port are not recorded and redisReconnect has no Homa
      * branch, so a Homa context cannot be reconnected (TCP/Unix can). */
-    c->connection_type = REDIS_CONN_HOMA;
+    c->connection_type = smt ? REDIS_CONN_SMT : REDIS_CONN_HOMA;
 
     fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_HOMA);
     if (fd == REDIS_INVALID_FD) {
@@ -834,6 +835,17 @@ int redisContextConnectHoma(redisContext *c, const char *addr, int port,
         hi_free(h);
         close(fd);
         __redisSetError(c, REDIS_ERR_IO, "Cannot init Homa receive buffer");
+        return REDIS_ERR;
+    }
+
+    /* SMT: arm the socket with the kernel-TLS hardcoded key (client side);
+     * zeroed peer/local fields key the crypto info to (local_port, protocol),
+     * exactly as the reference smt-apps do. */
+    if (smt && smt_aes_gcm_128_setsockopt_hardcodekey_helper(fd, 0, 0, 0, 0, 0) < 0) {
+        munmap(h->region, h->region_size);
+        hi_free(h);
+        close(fd);
+        __redisSetError(c, REDIS_ERR_IO, "Cannot set SMT key");
         return REDIS_ERR;
     }
 
@@ -858,4 +870,14 @@ int redisContextConnectHoma(redisContext *c, const char *addr, int port,
 
     c->flags |= REDIS_CONNECTED;
     return REDIS_OK;
+}
+
+int redisContextConnectHoma(redisContext *c, const char *addr, int port,
+                            const struct timeval *timeout) {
+    return redisContextConnectHomaInternal(c, addr, port, timeout, 0);
+}
+
+int redisContextConnectSmt(redisContext *c, const char *addr, int port,
+                           const struct timeval *timeout) {
+    return redisContextConnectHomaInternal(c, addr, port, timeout, 1);
 }

@@ -148,7 +148,8 @@ enum redisConnectionType {
     REDIS_CONN_TCP,
     REDIS_CONN_UNIX,
     REDIS_CONN_USERFD,
-    REDIS_CONN_HOMA
+    REDIS_CONN_HOMA,
+    REDIS_CONN_SMT
 };
 
 struct redisSsl;
@@ -236,6 +237,12 @@ typedef struct {
         (opts)->endpoint.tcp.port = port_;           \
     } while(0)
 
+#define REDIS_OPTIONS_SET_SMT(opts, ip_, port_) do { \
+        (opts)->type = REDIS_CONN_SMT;               \
+        (opts)->endpoint.tcp.ip = ip_;               \
+        (opts)->endpoint.tcp.port = port_;           \
+    } while(0)
+
 #define REDIS_OPTIONS_SET_UNIX(opts, path) do { \
         (opts)->type = REDIS_CONN_UNIX;         \
         (opts)->endpoint.unix_socket = path;    \
@@ -307,6 +314,8 @@ redisContext *redisConnectWithOptions(const redisOptions *options);
 redisContext *redisConnect(const char *ip, int port);
 redisContext *redisConnectHoma(const char *ip, int port);
 redisContext *redisConnectHomaNonBlock(const char *ip, int port);
+redisContext *redisConnectSmt(const char *ip, int port);
+redisContext *redisConnectSmtNonBlock(const char *ip, int port);
 redisContext *redisConnectWithTimeout(const char *ip, int port, const struct timeval tv);
 redisContext *redisConnectNonBlock(const char *ip, int port);
 redisContext *redisConnectBindNonBlock(const char *ip, int port,

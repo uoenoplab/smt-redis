@@ -41,6 +41,7 @@ typedef enum {
 #define CONN_TYPE_UNIX              "unix"
 #define CONN_TYPE_TLS               "tls"
 #define CONN_TYPE_HOMA              "homa"
+#define CONN_TYPE_SMT               "smt"
 #define CONN_TYPE_MAX               8           /* 8 is enough to be extendable */
 
 typedef void (*ConnectionCallbackFunc)(struct connection *conn);
@@ -478,6 +479,7 @@ int RedisRegisterConnectionTypeSocket(void);
 int RedisRegisterConnectionTypeUnix(void);
 int RedisRegisterConnectionTypeTLS(void);
 int RedisRegisterConnectionTypeHoma(void);
+int RedisRegisterConnectionTypeSmt(void);
 int homaBindAllowed(char **bindaddr, int count);
 int connIsHoma(connection *conn);
 

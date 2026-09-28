@@ -27,9 +27,11 @@
 #include "connhelpers.h"
 #include "anet.h"
 #include "homa_user.h"
+#include "smt_uapi.h"
 #include <arpa/inet.h>
 
 static ConnectionType CT_Homa;
+static ConnectionType CT_Smt;
 
 /* Each Homa/SMT listen socket mmaps its own receive pool and keeps its own
  * peers; there are at most two listeners (--homa-port and --smt-port). */
@@ -81,6 +83,11 @@ static void homaRpcFree(void *ptr) {
 static const char *connHomaGetType(connection *conn) {
     UNUSED(conn);
     return CONN_TYPE_HOMA;
+}
+
+static const char *connSmtGetType(connection *conn) {
+    UNUSED(conn);
+    return CONN_TYPE_SMT;
 }
 
 /* -------------------------------------------------------------------------
@@ -155,8 +162,8 @@ static homa_connection *homaPeerGet(homa_pool *pool, struct aeEventLoop *el,
 /* Homa binds a port, never an address (homa_bind ignores sin_addr), so a Homa
  * socket listens on every interface. Only allow that when `bind` exposes TCP
  * on every IPv4 interface too, rather than silently widen what it restricts. */
-int connIsHoma(connection *conn) {
-    return conn && conn->type == &CT_Homa;
+int connIsHoma(connection *conn) { /* SMT connections are Homa ones too */
+    return conn && (conn->type == &CT_Homa || conn->type == &CT_Smt);
 }
 
 int homaBindAllowed(char **bindaddr, int count) {
@@ -168,16 +175,21 @@ int homaBindAllowed(char **bindaddr, int count) {
     return 0;
 }
 
-static int connHomaListen(connListener *listener) {
+/* smt != 0: arm the socket with the SMT (kernel-TLS) hardcoded key after the
+ * receive pool is set up — keys are scoped to (local_port, protocol) by
+ * passing zeroed peer/local fields, exactly as the reference apps do. */
+static int connHomaListenCommon(connListener *listener, int smt) {
     if (!homaBindAllowed(listener->bindaddr, listener->bindaddr_count)) {
-        serverLog(LL_WARNING, "Homa can't bind an address, so port %d would listen on "
-                  "every interface: add '*' or '0.0.0.0' to 'bind'", listener->port);
+        serverLog(LL_WARNING, "%s can't bind an address, so port %d would listen on "
+                  "every interface: add '*' or '0.0.0.0' to 'bind'", smt ? "SMT" : "Homa",
+                  listener->port);
         return C_ERR;
     }
     /* Peers are fed on the main thread by the dispatcher; an IO thread taking
      * one over would process the same client concurrently. */
     if (server.io_threads_num > 1) {
-        serverLog(LL_WARNING, "Homa port %d does not support io-threads > 1", listener->port);
+        serverLog(LL_WARNING, "%s port %d does not support io-threads > 1",
+                  smt ? "SMT" : "Homa", listener->port);
         return C_ERR;
     }
 
@@ -205,6 +217,13 @@ static int connHomaListen(connListener *listener) {
         return C_ERR;
     }
 
+    if (smt && smt_aes_gcm_128_setsockopt_hardcodekey_helper(fd, 0, 0, 0, 0, 1) < 0) {
+        serverLog(LL_WARNING, "Couldn't set SMT key on port %d: %s", listener->port, strerror(errno));
+        munmap(region, region_size);
+        close(fd);
+        return C_ERR;
+    }
+
     anetNonBlock(NULL, fd);
     anetCloexec(fd);
     listener->fd[listener->count++] = fd;
@@ -215,8 +234,16 @@ static int connHomaListen(connListener *listener) {
     pool->listener = listener;
     pool->peers = dictCreate(&homaPeerDictType);
     pool->pending = listCreate();
-    serverLog(LL_NOTICE, "Homa listening on port %d (fd=%d)", listener->port, fd);
+    serverLog(LL_NOTICE, "%s listening on port %d (fd=%d)", smt ? "SMT" : "Homa", listener->port, fd);
     return C_OK;
+}
+
+static int connHomaListen(connListener *listener) {
+    return connHomaListenCommon(listener, 0);
+}
+
+static int connSmtListen(connListener *listener) {
+    return connHomaListenCommon(listener, 1);
 }
 
 /* -------------------------------------------------------------------------
@@ -698,6 +725,51 @@ static ConnectionType CT_Homa = {
     .process_pending_data = connHomaProcessPendingData,
 };
 
+/* SMT is a Homa socket armed with a kernel-TLS key at listen/connect time;
+ * everything else is identical to the Homa connection type. */
+static ConnectionType CT_Smt = {
+    .get_type = connSmtGetType,
+
+    .init = NULL,
+    .cleanup = NULL,
+    .configure = NULL,
+
+    .ae_handler = connHomaEventHandler,
+    .accept_handler = connHomaDispatchHandler,
+    .addr = connHomaAddr,
+    .is_local = connHomaIsLocal,
+    .listen = connSmtListen,
+
+    .conn_create = NULL,
+    .conn_create_accepted = NULL,
+    .shutdown = connHomaShutdown,
+    .close = connHomaClose,
+
+    .connect = NULL,
+    .blocking_connect = NULL,
+    .accept = connHomaAccept,
+
+    .unbind_event_loop = NULL,
+    .rebind_event_loop = connHomaRebindEventLoop,
+
+    .write = connHomaWrite,
+    .writev = connHomaWritev,
+    .read = connHomaRead,
+    .set_write_handler = connHomaSetWriteHandler,
+    .set_read_handler = connHomaSetReadHandler,
+    .get_last_error = connHomaGetLastError,
+    .sync_write = connHomaSyncWrite,
+    .sync_read = connHomaSyncRead,
+    .sync_readline = connHomaSyncReadLine,
+
+    .has_pending_data = connHomaHasPendingData,
+    .process_pending_data = connHomaProcessPendingData,
+};
+
 int RedisRegisterConnectionTypeHoma(void) {
     return connTypeRegister(&CT_Homa);
+}
+
+int RedisRegisterConnectionTypeSmt(void) {
+    return connTypeRegister(&CT_Smt);
 }
