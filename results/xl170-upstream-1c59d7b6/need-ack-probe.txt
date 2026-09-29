@@ -1,0 +1,23 @@
+# bash need-ack-probe.sh ~/smt-redis 2 (tag), then ~/smt-redis-tip 2 (branch tip), on node1 in Homa's config
+== tag
+run 1 +0s: node0 timer 1.0% need_ack/s 0 timeouts/s 0 | node1 need_ack in/s 0 ack out/s 0
+run 1 +30s: node0 timer 2.0% need_ack/s 0 timeouts/s 0 | node1 need_ack in/s 0 ack out/s 0
+run 1 +60s: node0 timer 2.0% need_ack/s 0 timeouts/s 0 | node1 need_ack in/s 0 ack out/s 0
+run 2 +0s: node0 timer 78.0% need_ack/s 398949 timeouts/s 0 | node1 need_ack in/s 0 ack out/s 0
+run 2 +30s: node0 timer 77.0% need_ack/s 394456 timeouts/s 0 | node1 need_ack in/s 0 ack out/s 0
+run 2 +60s: node0 timer 77.0% need_ack/s 394187 timeouts/s 0 | node1 need_ack in/s 0 ack out/s 0
+== tip
+run 1 +0s: node0 timer 68.0% need_ack/s 340100 timeouts/s 0 | node1 need_ack in/s 0 ack out/s 0
+run 1 +30s: node0 timer 68.0% need_ack/s 335664 timeouts/s 0 | node1 need_ack in/s 0 ack out/s 0
+run 1 +60s: node0 timer 68.0% need_ack/s 332797 timeouts/s 0 | node1 need_ack in/s 0 ack out/s 0
+run 2 +0s: node0 timer 68.0% need_ack/s 328570 timeouts/s 0 | node1 need_ack in/s 0 ack out/s 0
+run 2 +30s: node0 timer 67.0% need_ack/s 324397 timeouts/s 0 | node1 need_ack in/s 0 ack out/s 0
+run 2 +60s: node0 timer 66.0% need_ack/s 319542 timeouts/s 0 | node1 need_ack in/s 0 ack out/s 0
+# by hand, branch tip, fresh server: packets_sent_NEED_ACK per second on node0
+before: 0; after 20 redis-cli --homa ping: 11186; 10 s later: 17; after 20 more: 13984; after server shutdown: 0
+# node0 while 330-400 were pending, network otherwise idle: tx 313454 packets/s; node1 rx 314981 packets/s; node0 rx 1 packet/s
+# by hand, branch tip, fresh server, node1's net.ipv4.icmp_ratelimit alternated: NEED_ACK/s on node0
+icmp_ratelimit=1000: before 0, right after 20 redis-cli 11874, 4 s later 9861
+icmp_ratelimit=0: before 0, right after 20 redis-cli 0, 4 s later 0
+icmp_ratelimit=1000: before 0, right after 20 redis-cli 11851, 4 s later 9850
+icmp_ratelimit=0: before 0, right after 20 redis-cli 0, 4 s later 0
