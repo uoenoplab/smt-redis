@@ -8,9 +8,9 @@ trace.
 
 | Component | Repository and version | Role |
 |---|---|---|
-| Homa | <https://github.com/PlatformLab/HomaModule>, `main` @ `1c59d7b6` | kernel module, `sch_homa`, the CloudLab `config` tool |
+| Homa | <https://github.com/PlatformLab/HomaModule/tree/1c59d7b6>, `main` @ `1c59d7b6` | kernel module, `sch_homa`, the CloudLab `config` tool |
 | Redis with a Homa transport | <https://github.com/uoenoplab/smt-redis/tree/homa-6.17.8>, branch `homa-6.17.8` @ `f749cd4dd` | the server (and `redis-cli` for preload checks) |
-| memtier_benchmark with Homa | <https://github.com/uoenoplab/memtier_benchmark>, branch `homa`, `9006af8` (on <https://github.com/redis/memtier_benchmark> `7a6394e`) | the client fleet |
+| memtier_benchmark with Homa | <https://github.com/uoenoplab/memtier_benchmark/tree/homa>, branch `homa`, `9006af8` (on <https://github.com/redis/memtier_benchmark/tree/7a6394e> `7a6394e`) | the client fleet |
 | Scripts | this branch: `fleet-xl170.sh`, `tcpclean.sh`, `busy-cores.sh`, `homa-timer-busy.sh`, `plot.py` | runs, host state, CPU sampling, figures |
 
 **Server** (node0): one redis-server process with a single event-loop thread (`--io-threads 1`)
@@ -20,7 +20,7 @@ readable, the event loop drains the ready RPCs with `recvmsg` and hands each to 
 object of its peer (ip:port), which runs the commands; each RPC's replies leave as one `sendmsg`.
 
 **Load generator**: memtier_benchmark is Redis Ltd.'s open-source load generator for Redis and
-Memcached (<https://github.com/redis/memtier_benchmark>). It emulates many clients from one
+Memcached (<https://github.com/redis/memtier_benchmark/tree/master>). It emulates many clients from one
 process: worker threads, each running a libevent loop that drives many client connections, every
 connection speaking the Redis protocol and recording per-request latency into HDR histograms. Our
 fork adds a Homa transport (each client one Homa socket, the protocol code unchanged), open-loop
@@ -68,7 +68,7 @@ When each Homa property should help, and what cancels it:
 
 c52 and c53 are two clusters of Twitter's in-memory cache (Twemcache) trace: one week of requests
 to 54 production clusters, published with Yang, Yue and Rashmi, "A large scale analysis of hundreds
-of in-memory cache clusters at Twitter", OSDI 2020 (<https://github.com/twitter/cache-trace>). We
+of in-memory cache clusters at Twitter", OSDI 2020 (<https://github.com/twitter/cache-trace/tree/master>). We
 used the sampled per-cluster files from CMU PDL
 (<https://ftp.pdl.cmu.edu/pub/datasets/twemcacheWorkload/open_source/>, `clusterNN.sort.sample100.zst`):
 the first 20,000,000 requests of cluster 52 and all 2,468,148 of cluster 53.
