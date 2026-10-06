@@ -1,10 +1,39 @@
 # Redis over Homa vs TCP: a client fleet against one Redis shard
 
 One single-threaded Redis shard serving 1,024 to 24,576 independent clients over Homa and over
-TCP, on 2x CloudLab Utah xl170 (25 Gb/s), with request sizes and mixes from the Twitter
-cache trace.
+TCP, on 2x CloudLab Utah xl170 (25 Gb/s), with request sizes and mixes from the Twitter cache
+trace.
 
-## Reasoning
+## Client, server and threading model
+
+| Component | Repository and version | Role |
+|---|---|---|
+| Homa | <https://github.com/PlatformLab/HomaModule>, `main` @ `1c59d7b6` | kernel module, `sch_homa`, the CloudLab `config` tool |
+| Redis with a Homa transport | <https://github.com/uoenoplab/smt-redis>, tag `homa-6.17.8-xl170-20261006` (branch `homa-6.17.8`, `f749cd4dd`) | the server (and `redis-cli` for preload checks) |
+| memtier_benchmark with Homa | <https://github.com/uoenoplab/memtier_benchmark>, branch `homa`, `9006af8` (on <https://github.com/redis/memtier_benchmark> `7a6394e`) | the client fleet |
+| Scripts | this branch: `fleet-xl170.sh`, `tcpclean.sh`, `busy-cores.sh`, `homa-timer-busy.sh`, `plot.py` | runs, host state, CPU sampling, figures |
+
+**Server** (node0): one redis-server process with a single event-loop thread (`--io-threads 1`)
+pinned to CPU 7; it parses and executes every command. Over TCP each client has its own socket and
+the event loop polls all of them with epoll. Over Homa one socket serves every client: when it is
+readable, the event loop drains the ready RPCs with `recvmsg` and hands each to the Redis client
+object of its peer (ip:port), which runs the commands; each RPC's replies leave as one `sendmsg`.
+
+**Clients** (node1): one memtier_benchmark process with 16 worker threads on CPUs 0-3, 5-13 and
+15-18. Each thread runs one libevent loop that drives C clients (C = 64, 512 or 1,536, so
+N = 16 x C = 1,024, 8,192 or 24,576). A client is one TCP connection or one Homa socket with one
+request in flight (`--pipeline=1`): its next request goes out only after the reply arrives. Each
+client's requests arrive as a Poisson process of LOAD/N per second (LOAD = 20k-100k requests/s in
+total); an arrival that finds the previous request still in flight waits for it.
+
+**Kernel**: the NIC interrupts (NAPI) of the node pair land on node0 CPU 1 and node1 CPU 4, which
+the applications avoid; Homa's `homa_timer` kthread is pinned to CPU 19 on both nodes.
+
+**Runs**: a fresh redis-server once node0 is idle; 100,000 keys preloaded; 5 s warm-up (not
+counted); 20 s measured; CPU sampled for 4 s mid-run as MPERF/TSC on every CPU of both nodes;
+3 rounds, medians reported.
+
+## Why we test it this way
 
 A production Redis shard serves a fleet of application processes. Most use synchronous client
 libraries (redis-py, Jedis, hiredis) with connection pools: each client is one connection with one
@@ -26,17 +55,7 @@ experiment is built to expose them:
 | Message-based, shortest remaining message first: a small reply is not queued behind another client's large one | sizes mixed across clients, egress the bottleneck | ordering inside one client, or a single-threaded endpoint that must process a large message whole | c53 mixes 8 B to 35 KB |
 | Receiver-driven grants: incast without loss | many senders replying to one receiver | (needs more than two machines) | not tested |
 
-## The experiment
-
-| Element | Choice |
-|---|---|
-| Server | one redis-server, `--io-threads 1`, pinned to node0 CPU 7 |
-| Clients | memtier_benchmark, 16 threads x 64 / 512 / 1,536 clients (N = 1,024 / 8,192 / 24,576); each client one TCP connection or one Homa socket, one request in flight (`--pipeline=1`) |
-| Arrivals | open loop: each client's requests are a Poisson process of LOAD/N per second; LOAD = 20k-100k requests/s |
-| Requests | value sizes and SET:GET ratio of two Twitter clusters (Yang et al., OSDI'20, CMU PDL `sample100`); 100,000 keys, all preloaded, drawn uniformly (every GET hits) |
-| Run | fresh redis-server once node0 is idle; preload; 5 s warm-up (not counted); 20 s measured; CPU sampled 4 s mid-run as MPERF/TSC on every CPU; 3 rounds, medians |
-
-### Workloads: c52 and c53
+### The workloads: c52 and c53
 
 c52 and c53 are two clusters of Twitter's in-memory cache (Twemcache) trace: one week of requests
 to 54 production clusters, published with Yang, Yue and Rashmi, "A large scale analysis of hundreds
@@ -127,16 +146,7 @@ preloaded, so every GET hits.
 
 Runs at 20k and 40k offered: 96; largest deviation of achieved from offered: 0.4%
 
-## Code
-
-| Component | Repository and version | Role |
-|---|---|---|
-| Homa | <https://github.com/PlatformLab/HomaModule>, `main` @ `1c59d7b6` | kernel module, `sch_homa`, the CloudLab `config` tool |
-| Redis with a Homa transport | <https://github.com/uoenoplab/smt-redis>, tag `homa-6.17.8-xl170-20261006` (branch `homa-6.17.8`, `f749cd4dd`) | the server (and `redis-cli` for preload checks) |
-| memtier_benchmark with Homa | <https://github.com/uoenoplab/memtier_benchmark>, branch `homa`, `9006af8` (on <https://github.com/redis/memtier_benchmark> `7a6394e`) | the client fleet |
-| Scripts | this branch: `fleet-xl170.sh`, `tcpclean.sh`, `busy-cores.sh`, `homa-timer-busy.sh`, `plot.py` | runs, host state, CPU sampling, figures |
-
-### Changes over the earlier Homa Redis
+## Changes over the earlier Homa Redis
 
 The earlier Homa port (uoenoplab/smt-redis branch `smt`, 2024) was Redis 7.2.4 against the 2024
 Homa user API, chose the transport by port range (5xxx / 6xxx / 8xxx), and its redis-benchmark
