@@ -215,6 +215,7 @@ memtier_benchmark -s 10.0.1.1 -p 2000 --homa --protocol=redis -t 16 -c 512 --pip
 ```
 
 The preload before it, over TCP: the same with `-p 6379 -t 4 -c 8 --ratio=1:0 --key-pattern=P:P -n allkeys`.
+
 ### Run (node1, about 3 h)
 
 ```bash
