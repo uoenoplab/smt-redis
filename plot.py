@@ -26,15 +26,15 @@ for i, w in enumerate(WL):
         ax = axs[i][j]
         for tr, (name, col) in TR.items():
             for c, ls, lab in (("get_p99_us", "-", "p99"), ("get_p50_us", "--", "p50")):
-                pts = [(L / 1000, D[(w, n, L, tr)]) for L in LOADS]
-                ax.plot([x for x, _ in pts], [m[c] for _, m in pts], ls, color=col, label=f"{name} {lab}")
-                for x, m in pts:
-                    ax.plot(x, m[c], "o" if ok(m) else "x", color=col, ms=3 if ok(m) else 7)
-        ax.set_yscale("log"); ax.grid(alpha=.3); ax.set_title(f"{WL[w]}, {n:,} clients", fontsize=10)
+                pts = [(L / 1000, D[(w, n, L, tr)]) for L in LOADS if ok(D[(w, n, L, tr)])]
+                ax.plot([x for x, _ in pts], [m[c] for _, m in pts], ls, marker="o", ms=3, color=col,
+                        label=f"{name} {lab}")
+        ax.set_xlim(15, 105); ax.set_yscale("log"); ax.grid(alpha=.3)
+        ax.set_title(f"{WL[w]}, {n:,} clients", fontsize=10)
         if i == 1: ax.set_xlabel("offered load (k requests/s)")
         if j == 0: ax.set_ylabel("GET latency (us)")
 axs[0][0].legend(fontsize=8)
-fig.suptitle("GET p50 and p99 vs load (x: the server did not keep up with the offered load)")
+fig.suptitle("GET p50 and p99 vs load, at the loads each transport sustains (achieved within 2% of offered)")
 fig.tight_layout(); fig.savefig("latency.png", dpi=300)
 
 # CPU per request at 20k and 40k requests/s (sustained everywhere)
@@ -69,13 +69,13 @@ fig.tight_layout(); fig.savefig("throughput.png", dpi=300)
 
 # README tables
 for w in WL:
-    print(f"\n**{w}** (* = the server did not keep up; achieved k requests/s in brackets)\n")
+    print(f"\n**{w}** (latency only where the achieved load is within 2% of the offered)\n")
     print("| clients | load | Homa p50 / p99 (us) | TCP p50 / p99 (us) | node0 CPU per request, Homa / TCP (us) |")
     print("|---:|---:|---:|---:|---:|")
     for n in NS:
         for L in LOADS:
             h, t = D[(w, n, L, "homa")], D[(w, n, L, "tcp")]
-            f = lambda m: f"{m['get_p50_us']:.0f} / {m['get_p99_us']:.0f}" + ("" if ok(m) else f" * ({m['ops'] / 1000:.0f}k)")
+            f = lambda m: f"{m['get_p50_us']:.0f} / {m['get_p99_us']:.0f}" if ok(m) else f"saturated at {m['ops'] / 1000:.0f}k"
             c = f"{cpu(h):.1f} / {cpu(t):.1f}" if ok(h) and ok(t) else "-"
             print(f"| {n:,} | {L // 1000}k | {f(h)} | {f(t)} | {c} |")
 rows = [r for f in ("homa", "tcp") for r in csv.DictReader(open(f"results/fleet-{f}.csv")) if int(r["offered"]) <= 40000]

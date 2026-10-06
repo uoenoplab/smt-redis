@@ -82,9 +82,10 @@ preloaded, so every GET hits.
   and Homa does more work on it per message (one `recvmsg` and one `sendmsg` per message, a
   multi-KB message copied in one call) although it does less on the node as a whole.
 - **Offered load reached**: every run at 20k and 40k requests/s achieved its offered load within
-  0.4%; points where the server fell more than 2% short are marked * (x in the figure).
+  0.4%. Where a transport fell more than 2% short of the offered load, its latency only measures
+  the backlog, so the figure and the tables give no latency there, only the load it achieved.
 
-**c52** (* = the server did not keep up; achieved k requests/s in brackets)
+**c52** (latency only where the achieved load is within 2% of the offered)
 
 | clients | load | Homa p50 / p99 (us) | TCP p50 / p99 (us) | node0 CPU per request, Homa / TCP (us) |
 |---:|---:|---:|---:|---:|
@@ -97,32 +98,32 @@ preloaded, so every GET hits.
 | 8,192 | 40k | 55 / 151 | 71 / 183 | 19.4 / 35.1 |
 | 8,192 | 60k | 55 / 191 | 71 / 223 | 16.9 / 28.4 |
 | 8,192 | 80k | 71 / 255 | 95 / 335 | 15.0 / 24.0 |
-| 8,192 | 100k | 95 / 391 | 94719 / 97279 * (86k) | - |
+| 8,192 | 100k | 95 / 391 | saturated at 86k | - |
 | 24,576 | 20k | 55 / 215 | 87 / 215 | 26.5 / 46.0 |
 | 24,576 | 40k | 55 / 175 | 79 / 207 | 19.9 / 35.3 |
 | 24,576 | 60k | 63 / 207 | 79 / 279 | 17.1 / 28.5 |
 | 24,576 | 80k | 79 / 375 | 111 / 583 | 15.2 / 24.1 |
-| 24,576 | 100k | 264191 / 303103 * (88k) | 274431 / 286719 * (87k) | - |
+| 24,576 | 100k | saturated at 88k | saturated at 87k | - |
 
-**c53** (* = the server did not keep up; achieved k requests/s in brackets)
+**c53** (latency only where the achieved load is within 2% of the offered)
 
 | clients | load | Homa p50 / p99 (us) | TCP p50 / p99 (us) | node0 CPU per request, Homa / TCP (us) |
 |---:|---:|---:|---:|---:|
 | 1,024 | 20k | 79 / 239 | 103 / 247 | 33.5 / 47.8 |
 | 1,024 | 40k | 95 / 311 | 103 / 279 | 25.6 / 35.2 |
 | 1,024 | 60k | 231 / 943 | 151 / 535 | 21.2 / 28.0 |
-| 1,024 | 80k | 15999 / 17151 * (64k) | 12991 / 14911 * (78k) | - |
-| 1,024 | 100k | 16063 / 17279 * (64k) | 13055 / 14399 * (78k) | - |
+| 1,024 | 80k | saturated at 64k | saturated at 78k | - |
+| 1,024 | 100k | saturated at 64k | saturated at 78k | - |
 | 8,192 | 20k | 79 / 271 | 111 / 295 | 34.1 / 58.9 |
 | 8,192 | 40k | 103 / 399 | 119 / 447 | 26.1 / 43.6 |
-| 8,192 | 60k | 135167 / 142335 * (57k) | 128511 / 166911 * (58k) | - |
-| 8,192 | 80k | 144383 / 149503 * (56k) | 134143 / 136191 * (61k) | - |
-| 8,192 | 100k | 144383 / 150527 * (57k) | 135167 / 137215 * (60k) | - |
+| 8,192 | 60k | saturated at 57k | saturated at 58k | - |
+| 8,192 | 80k | saturated at 56k | saturated at 61k | - |
+| 8,192 | 100k | saturated at 57k | saturated at 60k | - |
 | 24,576 | 20k | 87 / 295 | 111 / 303 | 34.7 / 59.1 |
 | 24,576 | 40k | 103 / 487 | 127 / 575 | 26.3 / 45.3 |
-| 24,576 | 60k | 413695 / 544767 * (52k) | 409599 / 505855 * (54k) | - |
-| 24,576 | 80k | 417791 / 532479 * (52k) | 440319 / 444415 * (55k) | - |
-| 24,576 | 100k | 415743 / 528383 * (51k) | 438271 / 446463 * (55k) | - |
+| 24,576 | 60k | saturated at 52k | saturated at 54k | - |
+| 24,576 | 80k | saturated at 52k | saturated at 55k | - |
+| 24,576 | 100k | saturated at 51k | saturated at 55k | - |
 
 Runs at 20k and 40k offered: 96; largest deviation of achieved from offered: 0.4%
 
