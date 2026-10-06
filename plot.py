@@ -81,3 +81,49 @@ for w in WL:
 rows = [r for f in ("homa", "tcp") for r in csv.DictReader(open(f"results/fleet-{f}.csv")) if int(r["offered"]) <= 40000]
 print(f"\nRuns at 20k and 40k offered: {len(rows)}; largest deviation of achieved from offered: "
       f"{max(abs(float(r['ops']) / int(r['offered']) - 1) for r in rows) * 100:.1f}%")
+
+# few clients (4-768): GET p50/p99 and CPU per request vs clients, at 20k and 60k requests/s
+S = collections.defaultdict(list)
+for f in ("homa", "tcp"):
+    for r in csv.DictReader(open(f"results/sweep-{f}.csv")):
+        S[(r["workload"], int(r["clients"]), int(r["offered"]), r["transport"])].append(r)
+S = {k: {c: st.median(float(r[c] or 0) for r in v) for c in v[0] if c not in ("workload", "transport")}
+     for k, v in S.items()}
+SN, SL = sorted({k[1] for k in S}), sorted({k[2] for k in S})
+fig, axs = plt.subplots(2, len(SL), figsize=(11, 7.5), sharex=True)
+for i, w in enumerate(WL):
+    for j, L in enumerate(SL):
+        ax = axs[i][j]
+        for tr, (name, col) in TR.items():
+            for c, ls, lab in (("get_p99_us", "-", "p99"), ("get_p50_us", "--", "p50")):
+                pts = [(n, S[(w, n, L, tr)][c]) for n in SN if ok(S[(w, n, L, tr)])]
+                ax.plot([n for n, _ in pts], [v for _, v in pts], ls, marker="o", ms=3, color=col, label=f"{name} {lab}")
+        ax.set_xscale("log"); ax.set_yscale("log"); ax.grid(alpha=.3)
+        ax.set_title(f"{WL[w]}, {L // 1000}k requests/s", fontsize=10)
+        if i == 1: ax.set_xlabel("clients")
+        if j == 0: ax.set_ylabel("GET latency (us)")
+axs[0][0].legend(fontsize=8)
+fig.suptitle("Few clients: GET p50 and p99 vs clients, at the loads each transport sustains")
+fig.tight_layout(); fig.savefig("few-latency.png", dpi=300)
+fig, axs = plt.subplots(1, 2, figsize=(11, 4), sharey=True)
+for ax, w in zip(axs, WL):
+    for tr, (name, col) in TR.items():
+        for L, ls in zip(SL, (":", "-")):
+            pts = [(n, cpu(S[(w, n, L, tr)])) for n in SN if ok(S[(w, n, L, tr)])]
+            ax.plot([n for n, _ in pts], [v for _, v in pts], ls, marker="o", ms=3, color=col, label=f"{name}, {L // 1000}k requests/s")
+    ax.set_xscale("log"); ax.set_ylim(bottom=0); ax.grid(alpha=.3); ax.set_title(WL[w], fontsize=10); ax.set_xlabel("clients")
+axs[0].set_ylabel("node0 CPU per request (us)"); axs[0].legend(fontsize=8)
+fig.suptitle("Few clients: server CPU per request vs clients")
+fig.tight_layout(); fig.savefig("few-cpu.png", dpi=300)
+print("\n=== few clients ===")
+for w in WL:
+    print(f"\n**{w}**: GET p50 / p99 (us) and node0 CPU per request (us), Homa | TCP\n")
+    print("| clients | " + " | ".join(f"{L // 1000}k Homa | {L // 1000}k TCP" for L in SL) + " |")
+    print("|---:" * (2 * len(SL) + 1) + "|")
+    for n in SN:
+        cells = []
+        for L in SL:
+            for tr in TR:
+                m = S[(w, n, L, tr)]
+                cells.append(f"{m['get_p50_us']:.0f} / {m['get_p99_us']:.0f}, {cpu(m):.1f}" if ok(m) else f"saturated at {m['ops'] / 1000:.0f}k")
+        print(f"| {n} | " + " | ".join(cells) + " |")

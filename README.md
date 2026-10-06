@@ -1,6 +1,6 @@
 # Redis over Homa vs TCP: a client fleet against one Redis shard
 
-One single-threaded Redis shard serving 1,024 to 24,576 independent clients over Homa and over
+One single-threaded Redis shard serving 4 to 24,576 independent clients over Homa and over
 TCP, on 2x CloudLab Utah xl170 (25 Gb/s), with request sizes and mixes from the Twitter cache
 trace.
 
@@ -10,7 +10,7 @@ trace.
 |---|---|---|
 | Homa | <https://github.com/PlatformLab/HomaModule/tree/1c59d7b6>, `main` @ `1c59d7b6` | kernel module, `sch_homa`, the CloudLab `config` tool |
 | Redis with a Homa transport | <https://github.com/uoenoplab/smt-redis/tree/homa-6.17.8>, branch `homa-6.17.8` @ `f749cd4dd` | the server (and `redis-cli` for preload checks) |
-| memtier_benchmark with Homa | <https://github.com/uoenoplab/memtier_benchmark/tree/homa>, branch `homa`, `9006af8` (on <https://github.com/redis/memtier_benchmark/tree/7a6394e> `7a6394e`) | the client fleet |
+| memtier_benchmark with Homa | <https://github.com/uoenoplab/memtier_benchmark/tree/homa>, branch `homa`: `9006af8` for 1,024-24,576 clients, `7f8b5a3` (the branch tip) for 4-768 (on <https://github.com/redis/memtier_benchmark/tree/7a6394e> `7a6394e`) | the client fleet |
 | Scripts | this branch: `fleet-xl170.sh`, `tcpclean.sh`, `busy-cores.sh`, `homa-timer-busy.sh`, `plot.py` | runs, host state, CPU sampling, figures |
 
 **Server** (node0): one redis-server process with a single event-loop thread (`--io-threads 1`)
@@ -35,6 +35,9 @@ total); an arrival that finds the previous request still in flight waits for it.
 
 **Kernel**: the NIC interrupts (NAPI) of the node pair land on node0 CPU 1 and node1 CPU 4, which
 the applications avoid; Homa's `homa_timer` kthread is pinned to CPU 19 on both nodes.
+
+**Few clients**: a second sweep uses 4, 8 or 12 threads x 1, 4, 16 or 64 clients per thread
+(N = 4 to 768) at 20k and 60k requests/s, otherwise the same, with 2 rounds.
 
 **Runs**: a fresh redis-server once node0 is idle; 100,000 keys preloaded; 5 s warm-up (not
 counted); 20 s measured; CPU sampled for 4 s mid-run as MPERF/TSC on every CPU of both nodes;
@@ -92,7 +95,7 @@ preloaded, so every GET hits.
 | c52 | `17:38,27:5751,38:199,54:39,70:23,117:10,151:240,216:383,306:531,434:732,607:1172,753:605,1149:220,1543:51,2403:3,3648:5` |
 | c53 | `8:717,16:304,24:251,40:713,56:310,72:215,98:241,128:73,231:41,280:91,432:322,528:79,912:1009,1136:388,1749:30,2574:41,3432:73,5049:125,7326:514,9801:323,13695:1594,18711:386,26961:1592,35343:567` |
 
-## Results
+## Results: 1,024-24,576 clients
 
 ![latency](latency.png)
 ![cpu](cpu.png)
@@ -155,6 +158,59 @@ preloaded, so every GET hits.
 
 Runs at 20k and 40k offered: 96; largest deviation of achieved from offered: 0.4%
 
+## Results: 4-768 clients
+
+![few-latency](few-latency.png)
+![few-cpu](few-cpu.png)
+
+- **TCP's extra server cost starts with the first connections.** With 4 clients both transports
+  spend the same node0 CPU per request (c52 at 60k: 17.1 us over Homa, 17.3 over TCP); TCP's cost
+  then grows with the client count (20.1 us at 16 clients, 22.8 at 768), Homa's stays at
+  16.5-17.1 us. With c53: 21.0-23.4 against 23.2-27.2 us at 60k.
+- **c52**: Homa's GET p50 and p99 are lower at every point but 4 clients at 60k (p50 87 vs 79 us,
+  p99 367 vs 339); at 20k its p50 is 20-50% lower.
+- **c53**: at 20k Homa's p50 is 13-31% lower and the p99s are within 10%. At 60k, close to Homa's
+  c53 capacity (64-69k in the fleet sweep), TCP's p99 is 1.8-2.4x lower from 12 clients on.
+- Homa's p50 at 20k depends on the number of client threads: 55-59 us with 4 threads (4, 16, 64,
+  256 clients), 71-75 us with 8 or 12; hence the zigzag in the figure.
+- At 60k with 4 clients each client has to carry 15k requests/s with one request in flight, close to
+  what one client can do; with c53 that point measures the clients (TCP's p50 is 39 ms, Homa does
+  not keep up), not the transports.
+
+**c52**: GET p50 / p99 (us) and node0 CPU per request (us), Homa | TCP
+
+| clients | 20k Homa | 20k TCP | 60k Homa | 60k TCP |
+|---:|---:|---:|---:|---:|
+| 4 | 59 / 199, 25.5 | 83 / 231, 28.1 | 87 / 367, 17.1 | 79 / 339, 17.3 |
+| 8 | 71 / 195, 25.8 | 95 / 227, 29.7 | 71 / 227, 16.7 | 79 / 267, 17.7 |
+| 12 | 75 / 203, 26.1 | 103 / 235, 32.0 | 63 / 203, 16.7 | 79 / 223, 17.9 |
+| 16 | 55 / 179, 25.9 | 103 / 227, 32.4 | 63 / 187, 16.7 | 83 / 223, 20.1 |
+| 32 | 71 / 191, 25.6 | 107 / 227, 32.6 | 63 / 183, 16.8 | 79 / 203, 20.3 |
+| 48 | 75 / 203, 25.7 | 111 / 227, 33.0 | 63 / 183, 16.6 | 83 / 223, 21.2 |
+| 64 | 55 / 183, 25.6 | 111 / 231, 34.2 | 63 / 179, 16.6 | 87 / 227, 21.6 |
+| 128 | 71 / 195, 25.7 | 111 / 223, 33.7 | 63 / 183, 16.7 | 79 / 207, 21.4 |
+| 192 | 75 / 203, 25.9 | 111 / 223, 34.3 | 63 / 183, 16.6 | 79 / 199, 22.1 |
+| 256 | 59 / 183, 25.7 | 107 / 223, 35.0 | 63 / 187, 16.8 | 91 / 231, 22.1 |
+| 512 | 71 / 199, 26.0 | 103 / 215, 38.5 | 67 / 183, 16.7 | 83 / 207, 21.9 |
+| 768 | 75 / 203, 25.6 | 103 / 215, 41.2 | 71 / 183, 16.5 | 83 / 207, 22.8 |
+
+**c53**: GET p50 / p99 (us) and node0 CPU per request (us), Homa | TCP
+
+| clients | 20k Homa | 20k TCP | 60k Homa | 60k TCP |
+|---:|---:|---:|---:|---:|
+| 4 | 87 / 303, 33.5 | 99 / 299, 31.8 | saturated at 52k | 38767 / 71423, 23.6 |
+| 8 | 95 / 275, 33.1 | 115 / 287, 33.7 | 539 / 4287, 21.1 | 163 / 791, 23.2 |
+| 12 | 95 / 271, 32.9 | 123 / 287, 36.0 | 207 / 1335, 21.0 | 139 / 519, 23.5 |
+| 16 | 87 / 267, 33.0 | 115 / 279, 35.8 | 203 / 1259, 21.0 | 143 / 519, 24.4 |
+| 32 | 91 / 263, 33.1 | 123 / 279, 38.7 | 211 / 1087, 21.1 | 147 / 475, 25.9 |
+| 48 | 95 / 263, 33.1 | 127 / 279, 38.6 | 215 / 1083, 21.1 | 135 / 431, 25.3 |
+| 64 | 87 / 255, 33.1 | 127 / 291, 39.1 | 199 / 879, 21.0 | 155 / 495, 26.1 |
+| 128 | 95 / 255, 33.0 | 127 / 283, 39.9 | 207 / 811, 21.1 | 151 / 467, 26.3 |
+| 192 | 95 / 263, 33.2 | 127 / 279, 39.3 | 203 / 779, 21.1 | 147 / 451, 26.5 |
+| 256 | 87 / 263, 33.5 | 127 / 295, 41.0 | 219 / 843, 21.1 | 163 / 487, 26.4 |
+| 512 | 95 / 271, 33.6 | 123 / 283, 44.2 | 227 / 875, 21.2 | 163 / 499, 26.8 |
+| 768 | 103 / 279, 33.9 | 119 / 275, 45.8 | 235 / 955, 21.2 | 163 / 535, 27.2 |
+
 ## Changes over the earlier Homa Redis
 
 The earlier Homa port (uoenoplab/smt-redis branch `smt`, 2024) was Redis 7.2.4 against the 2024
@@ -192,7 +248,7 @@ blocked on each Homa receive. The version measured here:
 | OS | Ubuntu 24.04, mainline kernel 6.17.8-061708-generic, `mitigations=off`, governor `performance` |
 | Homa | PlatformLab/HomaModule `main` @ `1c59d7b6` |
 | Redis | uoenoplab/smt-redis branch `homa-6.17.8` @ `f749cd4dd`: Redis 8.10.1 with a Homa transport |
-| Load generator | uoenoplab/memtier_benchmark branch `homa` (`9006af8`, on redis/memtier_benchmark `7a6394e`) |
+| Load generator | uoenoplab/memtier_benchmark branch `homa`: `9006af8` (1,024-24,576 clients, latency from the send) and `7f8b5a3` (4-768 clients, latency from the arrival), on redis/memtier_benchmark `7a6394e` |
 
 ### Build (both nodes for Homa and Redis, node1 for memtier)
 
@@ -204,7 +260,8 @@ git clone -b homa-6.17.8 https://github.com/uoenoplab/smt-redis ~/smt-redis && g
 # node1
 sudo apt-get install -y build-essential autoconf automake libpcre3-dev libevent-dev pkg-config zlib1g-dev libssl-dev
 git clone -b homa https://github.com/uoenoplab/memtier_benchmark ~/memtier_benchmark
-cd ~/memtier_benchmark && git checkout 9006af8 && autoreconf -ivf && ./configure && make -j16
+cd ~/memtier_benchmark && autoreconf -ivf && ./configure && make -j16   # 7f8b5a3, for 4-768 clients
+cp -r ~/memtier_benchmark ~/memtier-9006af8 && cd ~/memtier-9006af8 && git checkout 9006af8 && make -j16
 ```
 
 ### Host configuration of each protocol
@@ -236,12 +293,17 @@ memtier_benchmark -s 10.0.1.1 -p 2000 --homa --protocol=redis -t 16 -c 512 --pip
 
 The preload before it, over TCP: the same with `-p 6379 -t 4 -c 8 --ratio=1:0 --key-pattern=P:P -n allkeys`.
 
-### Run (node1, about 3 h)
+### Run (node1, about 5 h)
 
 ```bash
 for h in node0 node1; do scp busy-cores.sh homa-timer-busy.sh $h:; done
-tmux new -d -s fleet 'TRANSPORTS=homa CPT="64 512 1536" bash fleet-xl170.sh > fleet-homa.csv
-  bash tcpclean.sh on; TRANSPORTS=tcp CPT="64 512 1536" bash fleet-xl170.sh > fleet-tcp.csv; bash tcpclean.sh off'
+tmux new -d -s fleet 'M9=~/memtier-9006af8/memtier_benchmark
+  M=$M9 TRANSPORTS=homa CPT="64 512 1536" bash fleet-xl170.sh > fleet-homa.csv
+  export THREADS="4 8 12" CPT="1 4 16 64" LOADS="20000 60000" ROUNDS=2   # few clients
+  TRANSPORTS=homa bash fleet-xl170.sh > sweep-homa.csv; unset THREADS CPT LOADS ROUNDS
+  bash tcpclean.sh on; M=$M9 TRANSPORTS=tcp CPT="64 512 1536" bash fleet-xl170.sh > fleet-tcp.csv
+  THREADS="4 8 12" CPT="1 4 16 64" LOADS="20000 60000" ROUNDS=2 TRANSPORTS=tcp bash fleet-xl170.sh > sweep-tcp.csv
+  bash tcpclean.sh off'
 uv run --with matplotlib python plot.py
 ```
 
@@ -253,7 +315,7 @@ Check the host state that `tcpclean.sh` prints before each block: both nodes `20
 | `fleet-xl170.sh` | runs the experiment: fresh server, preload, memtier, CPU sampling; one CSV row per run |
 | `tcpclean.sh` | `on`: TCP; `off`: Homa's config |
 | `busy-cores.sh`, `homa-timer-busy.sh` | per-CPU busy % (MPERF/TSC); busy % of the `homa_timer` kthread |
-| `results/fleet-{homa,tcp}.csv` | one row per run; `server_busy_sum` is the sum of node0's per-CPU busy % |
+| `results/fleet-{homa,tcp}.csv`, `results/sweep-{homa,tcp}.csv` | 1,024-24,576 and 4-768 clients, one row per run; `server_busy_sum` is the sum of node0's per-CPU busy % |
 | `plot.py` | the figures and tables |
 
 ## Limitations
@@ -261,7 +323,8 @@ Check the host state that `tcpclean.sh` prints before each block: both nodes `20
 - **One client host.** node1 holds every Homa socket; `homa_timer`, which visits every socket each
   tick, takes 40% of a CPU at 8,192 clients and 68% at 24,576, and saturates its CPU (96%) at
   24,576 clients and 100k requests/s, so that point measures the client host, not Redis.
-- Latency is timed from the send of each request (memtier `9006af8`), not from its arrival; with
+- For 1,024-24,576 clients latency is timed from the send of each request (memtier `9006af8`), not
+  from its arrival (as for 4-768 clients, `7f8b5a3`); with
   one request in flight per client and at most 100k/1,024 = 98 requests/s per client, a request
   rarely waits behind its client's previous one.
 - Near saturation the CPU per request of both transports is inflated; only sustained points are

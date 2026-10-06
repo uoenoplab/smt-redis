@@ -25,6 +25,9 @@ declare -A SIZES=(
 declare -A RATIO=([c52]=7:93 [c53]=13:87)
 HOMA=$([[ " $TRANSPORTS " == *" homa "* ]] && echo "--homa-port 2000")
 [ -n "$HOMA" ] && for h in node0 node1; do ssh -4 $h 'bash -lc "config rps" >/dev/null'; done
+# Homa runs need Homa's config on both nodes: sch_homa on every TX queue
+[ -n "$HOMA" ] && for h in node0 node1; do
+  ssh -4 $h '[ $(tc qdisc show dev ens1f1np1 | grep -c "qdisc homa") = 20 ]' || { echo "$h: sch_homa missing" >&2; exit 1; }; done
 # Homa's timer thread visits every socket of its host each tick: with the whole fleet on node1 it
 # needs most of a CPU. Give it CPU 19 on both nodes, which memtier (MC) and redis-server leave free.
 for h in node0 node1; do ssh -4 $h 'p=$(pgrep -x homa_timer) && sudo taskset -pc 19 $p > /dev/null'; done

@@ -11,7 +11,9 @@ for h in node0 node1; do ssh -4 $h "
     for q in /sys/class/net/ens1f1np1/queues/rx-*; do echo 0 | sudo tee \$q/rps_cpus \$q/rps_flow_cnt >/dev/null; done
     sudo sysctl -qw net.core.rps_sock_flow_entries=0; sudo rmmod homa
   else
-    bash -lc 'config default' >/dev/null 2>&1
+    # config default has once left a node without sch_homa and RPS: retry until all 20 TX queues have it
+    for i in 1 2 3; do bash -lc 'config default' >/dev/null 2>&1
+      [ \$(tc qdisc show dev ens1f1np1 | grep -c 'qdisc homa') = 20 ] && break; done
   fi
   echo \$(hostname -s): homa=\$(cat /sys/module/homa/srcversion 2>/dev/null || echo unloaded) \
     qdisc=\$(tc qdisc show dev ens1f1np1 | awk '{print \$2}' | sort | uniq -c | awk '{printf \"%sx%s \", \$1, \$2}') \
