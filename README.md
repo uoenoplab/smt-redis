@@ -33,21 +33,23 @@ the applications avoid; Homa's `homa_timer` kthread is pinned to CPU 19 on both 
 counted); 20 s measured; CPU sampled for 4 s mid-run as MPERF/TSC on every CPU of both nodes;
 3 rounds, medians reported.
 
-## Why we test it this way
+## Test rationale
 
-A production Redis shard serves a fleet of application processes. Most use synchronous client
-libraries (redis-py, Jedis, hiredis) with connection pools: each client is one connection with one
-request in flight, and clients send independently of each other. In that regime:
+- **The simplest exchange.** Each client sends one request and waits for its reply before the
+  next (one request in flight), as an application thread does with a synchronous client library
+  (redis-py, Jedis, hiredis) and a connection pool.
+- **Many clients contending for one server core.** Thousands of such clients share one Redis
+  core, so requests from different clients queue behind each other at the server: head-of-line
+  blocking across clients, made worse when a small reply waits behind another client's large one.
+  This is where the transports differ: TCP keeps a socket per client, Homa one for all, and Homa
+  sends the shortest remaining message first.
+- **Not head-of-line blocking within one stream.** Redis executes a client's commands in order on
+  one thread, so a client that pipelines many requests over one connection is serialized by Redis
+  anyway; letting a later reply overtake an earlier one in the transport gains little, and Homa's
+  per-message cost (one `recvmsg` and one `sendmsg` per request, where TCP batches several requests
+  per read) makes it lose there. We therefore do not pipeline.
 
-- **Batching** cannot happen: a client never has a second request queued behind the first, so
-  neither explicit pipelining nor TCP's coalescing of several requests per read applies. (Over one
-  busy connection TCP does batch, and there Homa, one message per request, costs more.)
-- **Serialization inside a client** cannot happen either: Redis executes one client's commands in
-  order, but each client has only one outstanding. Across clients Redis is out of order, so the
-  transport's ordering matters only between clients.
-
-What remains are the two properties in which the transports differ across clients, and the
-experiment is built to expose them:
+When each Homa property should help, and what cancels it:
 
 | Homa property | Pays off when | Cancelled when | Here |
 |---|---|---|---|
