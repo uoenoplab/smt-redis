@@ -19,6 +19,13 @@ the event loop polls all of them with epoll. Over Homa one socket serves every c
 readable, the event loop drains the ready RPCs with `recvmsg` and hands each to the Redis client
 object of its peer (ip:port), which runs the commands; each RPC's replies leave as one `sendmsg`.
 
+**Load generator**: memtier_benchmark is Redis Ltd.'s open-source load generator for Redis and
+Memcached (<https://github.com/redis/memtier_benchmark>). It emulates many clients from one
+process: worker threads, each running a libevent loop that drives many client connections, every
+connection speaking the Redis protocol and recording per-request latency into HDR histograms. Our
+fork adds a Homa transport (each client one Homa socket, the protocol code unchanged), open-loop
+Poisson arrivals and request mixes drawn from a trace (see Changes below).
+
 **Clients** (node1): one memtier_benchmark process with 16 worker threads on CPUs 0-3, 5-13 and
 15-18. Each thread runs one libevent loop that drives C clients (C = 64, 512 or 1,536, so
 N = 16 x C = 1,024, 8,192 or 24,576). A client is one TCP connection or one Homa socket with one
