@@ -1,0 +1,5 @@
+# need-ack-probe.sh on node1, Homa's config, server smt-redis f749cd4dd
+icmp_ratelimit=1000: NEED_ACK/s before 0, right after 11869, 4 s later 9837
+icmp_ratelimit=0: NEED_ACK/s before 0, right after 0, 4 s later 0
+icmp_ratelimit=1000: NEED_ACK/s before 0, right after 11656, 4 s later 9599
+icmp_ratelimit=0: NEED_ACK/s before 0, right after 0, 4 s later 0
