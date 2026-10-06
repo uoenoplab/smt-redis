@@ -9,7 +9,7 @@ trace.
 | Component | Repository and version | Role |
 |---|---|---|
 | Homa | <https://github.com/PlatformLab/HomaModule>, `main` @ `1c59d7b6` | kernel module, `sch_homa`, the CloudLab `config` tool |
-| Redis with a Homa transport | <https://github.com/uoenoplab/smt-redis>, tag `homa-6.17.8-xl170-20261006` (branch `homa-6.17.8`, `f749cd4dd`) | the server (and `redis-cli` for preload checks) |
+| Redis with a Homa transport | <https://github.com/uoenoplab/smt-redis/tree/homa-6.17.8>, branch `homa-6.17.8` @ `f749cd4dd` | the server (and `redis-cli` for preload checks) |
 | memtier_benchmark with Homa | <https://github.com/uoenoplab/memtier_benchmark>, branch `homa`, `9006af8` (on <https://github.com/redis/memtier_benchmark> `7a6394e`) | the client fleet |
 | Scripts | this branch: `fleet-xl170.sh`, `tcpclean.sh`, `busy-cores.sh`, `homa-timer-busy.sh`, `plot.py` | runs, host state, CPU sampling, figures |
 
@@ -191,7 +191,7 @@ blocked on each Homa receive. The version measured here:
 | Hardware | Intel Xeon E5-2640 v4 (10 cores / 20 threads), Mellanox ConnectX-4 25 Gb/s (`ens1f1np1`) |
 | OS | Ubuntu 24.04, mainline kernel 6.17.8-061708-generic, `mitigations=off`, governor `performance` |
 | Homa | PlatformLab/HomaModule `main` @ `1c59d7b6` |
-| Redis | uoenoplab/smt-redis tag `homa-6.17.8-xl170-20261006` (`f749cd4dd`): Redis 8.10.1 with a Homa transport |
+| Redis | uoenoplab/smt-redis branch `homa-6.17.8` @ `f749cd4dd`: Redis 8.10.1 with a Homa transport |
 | Load generator | uoenoplab/memtier_benchmark branch `homa` (`9006af8`, on redis/memtier_benchmark `7a6394e`) |
 
 ### Build (both nodes for Homa and Redis, node1 for memtier)
@@ -200,7 +200,7 @@ blocked on each Homa receive. The version measured here:
 git clone https://github.com/PlatformLab/HomaModule && cd HomaModule && git checkout 1c59d7b6
 cp -r cloudlab/bin/. ~/bin/ && make -j20 CC=gcc-14 && make -j20 -C util
 ~/bin/install_homa 2          # from node0: copies homa.ko and tools to both nodes, runs "config default"
-git clone -b homa-6.17.8-xl170-20261006 https://github.com/uoenoplab/smt-redis ~/smt-redis && make -C ~/smt-redis -j20
+git clone -b homa-6.17.8 https://github.com/uoenoplab/smt-redis ~/smt-redis && git -C ~/smt-redis checkout f749cd4dd && make -C ~/smt-redis -j20
 # node1
 sudo apt-get install -y build-essential autoconf automake libpcre3-dev libevent-dev pkg-config zlib1g-dev libssl-dev
 git clone -b homa https://github.com/uoenoplab/memtier_benchmark ~/memtier_benchmark
