@@ -6,7 +6,7 @@
 # from its arrival, so the time it waits behind its client's request in flight is included. Request mix
 # and value sizes come from the Twitter cache trace (Yang et al., OSDI'20): c52, the busiest cluster
 # whose mean value exceeds 100 B (third by request rate; values 17 B-3.6 KB, 7% writes), and c53 (values
-# 8 B-35 KB, a fifth of the GETs over 16 KB, 13% writes). Keys are drawn
+# 8 B-35 KB, a quarter of the GETs over 16 KB, 13% writes). Keys are drawn
 # uniformly from 100,000, all preloaded, so every GET hits.
 # Every run starts on a fresh redis-server (pinned to node0 CPU 7) once node0 is idle, preloads the
 # keys over TCP, warms the clients up for 5 s (not counted), measures 20 s, and samples both nodes' CPU

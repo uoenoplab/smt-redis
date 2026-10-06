@@ -36,10 +36,33 @@ experiment is built to expose them:
 | Requests | value sizes and SET:GET ratio of two Twitter clusters (Yang et al., OSDI'20, CMU PDL `sample100`); 100,000 keys, all preloaded, drawn uniformly (every GET hits) |
 | Run | fresh redis-server once node0 is idle; preload; 5 s warm-up (not counted); 20 s measured; CPU sampled 4 s mid-run as MPERF/TSC on every CPU; 3 rounds, medians |
 
-| Workload | Values (weighted by requests) | SET:GET | Cluster |
-|---|---|---|---|
-| c52 | 17 B-3.6 KB, mostly 27 B | 7:93 | busiest cluster whose mean value exceeds 100 B (third of 54 by request rate) |
-| c53 | 8 B-35 KB, a fifth of the GETs over 16 KB | 13:87 | values over four orders of magnitude |
+### Workloads: c52 and c53
+
+c52 and c53 are two clusters of Twitter's in-memory cache (Twemcache) trace: one week of requests
+to 54 production clusters, published with Yang, Yue and Rashmi, "A large scale analysis of hundreds
+of in-memory cache clusters at Twitter", OSDI 2020 (<https://github.com/twitter/cache-trace>). We
+used the sampled per-cluster files from CMU PDL
+(<https://ftp.pdl.cmu.edu/pub/datasets/twemcacheWorkload/open_source/>, `clusterNN.sort.sample100.zst`):
+the first 20,000,000 requests of cluster 52 and all 2,468,148 of cluster 53.
+
+| | c52 | c53 |
+|---|---|---|
+| Trace statistics (the paper's table) | 24.3k requests/s, third busiest of 54; mean key 20 B, mean value 273 B; get 91%, add 4%, gets 2%, cas 2%; Zipf 1.21 | 1.4k requests/s; mean key 36 B, mean value 9.2 KB; get 89%, prepend 9%, set 3%; Zipf 1.21 |
+| Why this cluster | the busiest whose mean value exceeds 100 B (the two busier ones average 8 B and 37 B, single-packet messages) | values spread over four orders of magnitude: the mix where a small reply can queue behind a large one |
+| GET value sizes, weighted by requests | 17 B-3.6 KB; 58% are 27 B | 8 B-35 KB; 25% over 16 KB |
+| SET:GET | 7:93 | 13:87 |
+
+How the memtier inputs were built from the trace: the value sizes of GET/GETS requests that hit
+(value size > 0) were binned at a factor of 1.41 (half a power of two); each bin became one
+`size:weight` entry of `--data-size-list`, the bin's median size weighted by its share of requests
+(per 10,000). The SET:GET ratio counts every write type (set, add, cas, replace, prepend, append,
+incr, decr) as a SET. Keys are not taken from the trace: 100,000 keys drawn uniformly, all
+preloaded, so every GET hits.
+
+| Workload | `--data-size-list` (size in bytes : weight per 10,000 GETs) |
+|---|---|
+| c52 | `17:38,27:5751,38:199,54:39,70:23,117:10,151:240,216:383,306:531,434:732,607:1172,753:605,1149:220,1543:51,2403:3,3648:5` |
+| c53 | `8:717,16:304,24:251,40:713,56:310,72:215,98:241,128:73,231:41,280:91,432:322,528:79,912:1009,1136:388,1749:30,2574:41,3432:73,5049:125,7326:514,9801:323,13695:1594,18711:386,26961:1592,35343:567` |
 
 ## Results
 
@@ -103,6 +126,43 @@ experiment is built to expose them:
 
 Runs at 20k and 40k offered: 96; largest deviation of achieved from offered: 0.4%
 
+## Code
+
+| Component | Repository and version | Role |
+|---|---|---|
+| Homa | <https://github.com/PlatformLab/HomaModule>, `main` @ `1c59d7b6` | kernel module, `sch_homa`, the CloudLab `config` tool |
+| Redis with a Homa transport | <https://github.com/uoenoplab/smt-redis>, tag `homa-6.17.8-xl170-20261006` (branch `homa-6.17.8`, `f749cd4dd`) | the server (and `redis-cli` for preload checks) |
+| memtier_benchmark with Homa | <https://github.com/uoenoplab/memtier_benchmark>, branch `homa`, `9006af8` (on <https://github.com/redis/memtier_benchmark> `7a6394e`) | the client fleet |
+| Drivers | this branch: `fleet-xl170.sh`, `tcpclean.sh`, `busy-cores.sh`, `homa-timer-busy.sh`, `plot.py` | runs, host state, CPU sampling, figures |
+
+### Changes over the earlier Homa Redis
+
+The earlier Homa port (uoenoplab/smt-redis branch `smt`, 2024) was Redis 7.2.4 against the 2024
+Homa user API, chose the transport by port range (5xxx / 6xxx / 8xxx), and its redis-benchmark
+blocked on each Homa receive. The version measured here:
+
+- **Redis 8.10.1 and the current Homa API**: the receive pool is an mmap region registered with
+  `SO_HOMA_RCVBUF`, buffer pages are recycled across `recvmsg` calls, and `sendmsg` carries
+  `homa_sendmsg_args`; the old `homa_hl.c` wrappers are gone.
+- **Homa as a Redis `ConnectionType`**, chosen explicitly (`--homa-port`, `redis-cli --homa`), not by
+  port range. One socket per listener; a dispatcher drains ready RPCs and hands each to a per-peer
+  Redis client (keyed by ip:port), so per-client state (SELECT, MULTI, ...) and command order behave
+  as over a TCP connection. One RPC in flight per peer; later ones wait in a queue with their own
+  bytes. New peers pass Redis's admission (maxclients, protected mode); idle peers are reaped.
+- **Replies leave as one Homa message straight from the client's output buffers** (one `writev`,
+  values of 16 KB and more by reference); an RPC without output gets a 1-byte no-reply message, a
+  reply over Homa's 1 MB limit an error; a send that hits `EAGAIN` is retried on `EPOLLOUT`.
+- **No empty event-loop turn per RPC**: the pending-data hook marks a peer only when it has another
+  RPC queued (without this, every reply kept the next `epoll_wait` from sleeping).
+- **Client side**: a Homa transport in Redis's vendored hiredis (`redisConnectHoma`), used by
+  `redis-cli` and a nonblocking `redis-benchmark`; one RPC in flight per context (Homa may complete
+  a later, smaller response first); closing a context sends QUIT, since Homa has no FIN.
+- **Load generator** (new): memtier_benchmark with `--homa` (each client one Homa socket, memtier's
+  protocol code unchanged), `--rate-poisson` (open-loop Poisson arrivals on absolute times),
+  `--sample-mix` (request type and value size drawn per request from the trace's weights),
+  `--warmup` and `--no-per-second-percentiles` (per-client per-second percentile summaries stall
+  worker threads at thousands of clients).
+
 ## Reproduce
 
 | Item | Value |
@@ -155,12 +215,6 @@ memtier_benchmark -s 10.0.1.1 -p 2000 --homa --protocol=redis -t 16 -c 512 --pip
 ```
 
 The preload before it, over TCP: the same with `-p 6379 -t 4 -c 8 --ratio=1:0 --key-pattern=P:P -n allkeys`.
-memtier options added on the `homa` branch: `--homa` (each client one Homa socket, one RPC in
-flight), `--rate-poisson` (Poisson arrivals on absolute times), `--sample-mix` (each request's
-type and size drawn by `--ratio` and the `--data-size-list` weights), `--warmup`,
-`--no-per-second-percentiles` (per-client per-second percentile summaries stall worker threads
-at thousands of clients).
-
 ### Run (node1, about 3 h)
 
 ```bash
