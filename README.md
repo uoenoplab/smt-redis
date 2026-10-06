@@ -134,7 +134,7 @@ Runs at 20k and 40k offered: 96; largest deviation of achieved from offered: 0.4
 | Homa | <https://github.com/PlatformLab/HomaModule>, `main` @ `1c59d7b6` | kernel module, `sch_homa`, the CloudLab `config` tool |
 | Redis with a Homa transport | <https://github.com/uoenoplab/smt-redis>, tag `homa-6.17.8-xl170-20261006` (branch `homa-6.17.8`, `f749cd4dd`) | the server (and `redis-cli` for preload checks) |
 | memtier_benchmark with Homa | <https://github.com/uoenoplab/memtier_benchmark>, branch `homa`, `9006af8` (on <https://github.com/redis/memtier_benchmark> `7a6394e`) | the client fleet |
-| Drivers | this branch: `fleet-xl170.sh`, `tcpclean.sh`, `busy-cores.sh`, `homa-timer-busy.sh`, `plot.py` | runs, host state, CPU sampling, figures |
+| Scripts | this branch: `fleet-xl170.sh`, `tcpclean.sh`, `busy-cores.sh`, `homa-timer-busy.sh`, `plot.py` | runs, host state, CPU sampling, figures |
 
 ### Changes over the earlier Homa Redis
 
@@ -231,7 +231,7 @@ Check the host state that `tcpclean.sh` prints before each block: both nodes `20
 
 | File | What |
 |---|---|
-| `fleet-xl170.sh` | driver: fresh server, preload, memtier, CPU sampling; one CSV row per run |
+| `fleet-xl170.sh` | runs the experiment: fresh server, preload, memtier, CPU sampling; one CSV row per run |
 | `tcpclean.sh` | `on`: TCP; `off`: Homa's config |
 | `busy-cores.sh`, `homa-timer-busy.sh` | per-CPU busy % (MPERF/TSC); busy % of the `homa_timer` kthread |
 | `results/fleet-{homa,tcp}.csv` | one row per run; `server_busy_sum` is the sum of node0's per-CPU busy % |
