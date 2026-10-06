@@ -1,7 +1,7 @@
-# Redis over Homa vs stock TCP: a client fleet against one Redis shard
+# Redis over Homa vs TCP: a client fleet against one Redis shard
 
 One single-threaded Redis shard serving 1,024 to 24,576 independent clients over Homa and over
-stock TCP, on 2x CloudLab Utah xl170 (25 Gb/s), with request sizes and mixes from the Twitter
+TCP, on 2x CloudLab Utah xl170 (25 Gb/s), with request sizes and mixes from the Twitter
 cache trace.
 
 ## Reasoning
@@ -49,12 +49,12 @@ experiment is built to expose them:
 
 - **Server CPU**: Homa needs 18-44% less node0 CPU per request at every client count and load
   both sustain (the most at low load and many clients), and its cost does not grow with the client count (c52 at 40k: 19.3-19.9 us over
-  Homa, 30.2-35.3 over stock TCP; c53 at 40k: 25.6-26.3 against 35.2-45.3).
+  Homa, 30.2-35.3 over TCP; c53 at 40k: 25.6-26.3 against 35.2-45.3).
 - **c52 (small values)**: Homa's GET p50 is 20-40% lower and its p99 0-40% lower at every load
-  both sustain; at 8,192 clients Homa sustains 100k requests/s (p99 391 us) while stock TCP
+  both sustain; at 8,192 clients Homa sustains 100k requests/s (p99 391 us) while TCP
   saturates at 86k.
 - **c53 (mixed sizes)**: at 20k and 40k requests/s Homa's p50 is 8-30% lower and the p99s are
-  within 15%; at 1,024 clients and 60k stock TCP is ahead (p50 151 vs 231 us, p99 535 vs 943); stock TCP saturates later at
+  within 15%; at 1,024 clients and 60k TCP is ahead (p50 151 vs 231 us, p99 535 vs 943); TCP saturates later at
   every client count (78k vs 64k, 60k vs 57k, 55k vs 51k). The single Redis core sets capacity,
   and Homa does more work on it per message (one `recvmsg` and one `sendmsg` per message, a
   multi-KB message copied in one call) although it does less on the node as a whole.
@@ -63,7 +63,7 @@ experiment is built to expose them:
 
 **c52** (* = the server did not keep up; achieved k requests/s in brackets)
 
-| clients | load | Homa p50 / p99 (us) | stock TCP p50 / p99 (us) | node0 CPU per request, Homa / stock TCP (us) |
+| clients | load | Homa p50 / p99 (us) | TCP p50 / p99 (us) | node0 CPU per request, Homa / TCP (us) |
 |---:|---:|---:|---:|---:|
 | 1,024 | 20k | 55 / 167 | 87 / 183 | 25.9 / 42.7 |
 | 1,024 | 40k | 47 / 143 | 71 / 167 | 19.3 / 30.2 |
@@ -83,7 +83,7 @@ experiment is built to expose them:
 
 **c53** (* = the server did not keep up; achieved k requests/s in brackets)
 
-| clients | load | Homa p50 / p99 (us) | stock TCP p50 / p99 (us) | node0 CPU per request, Homa / stock TCP (us) |
+| clients | load | Homa p50 / p99 (us) | TCP p50 / p99 (us) | node0 CPU per request, Homa / TCP (us) |
 |---:|---:|---:|---:|---:|
 | 1,024 | 20k | 79 / 239 | 103 / 247 | 33.5 / 47.8 |
 | 1,024 | 40k | 95 / 311 | 103 / 279 | 25.6 / 35.2 |
@@ -129,7 +129,7 @@ cd ~/memtier_benchmark && git checkout 9006af8 && autoreconf -ivf && ./configure
 
 ### Host configuration of each protocol
 
-| | Homa (official CloudLab config) | stock TCP |
+| | Homa (official CloudLab config) | TCP (kernel defaults, Homa removed) |
 |---|---|---|
 | Module | `homa.ko` loaded; `num_priorities 8`, `link_mbps 25000`, `unsched_bytes 60000`, `max_incoming 480000`, `max_gso_size 10000`, `max_nic_est_backlog_usecs 5` | `homa.ko` unloaded (`rmmod homa`) |
 | qdisc | `mq` with `sch_homa` on all 20 TX queues | `mq` with `fq_codel` (kernel default) |
@@ -166,19 +166,19 @@ at thousands of clients).
 ```bash
 for h in node0 node1; do scp busy-cores.sh homa-timer-busy.sh $h:; done
 tmux new -d -s fleet 'TRANSPORTS=homa CPT="64 512 1536" bash fleet-xl170.sh > fleet-homa.csv
-  bash tcpclean.sh on; TRANSPORTS=tcp CPT="64 512 1536" bash fleet-xl170.sh > fleet-stocktcp.csv; bash tcpclean.sh off'
+  bash tcpclean.sh on; TRANSPORTS=tcp CPT="64 512 1536" bash fleet-xl170.sh > fleet-tcp.csv; bash tcpclean.sh off'
 uv run --with matplotlib python plot.py
 ```
 
 Check the host state that `tcpclean.sh` prints before each block: both nodes `20xhoma`,
-`rps=fffff` for Homa; `20xfq_codel`, `rps=00000`, `homa=unloaded` for stock TCP.
+`rps=fffff` for Homa; `20xfq_codel`, `rps=00000`, `homa=unloaded` for TCP.
 
 | File | What |
 |---|---|
 | `fleet-xl170.sh` | driver: fresh server, preload, memtier, CPU sampling; one CSV row per run |
-| `tcpclean.sh` | `on`: stock TCP; `off`: Homa's config |
+| `tcpclean.sh` | `on`: TCP; `off`: Homa's config |
 | `busy-cores.sh`, `homa-timer-busy.sh` | per-CPU busy % (MPERF/TSC); busy % of the `homa_timer` kthread |
-| `results/fleet-{homa,stocktcp}.csv` | one row per run; `server_busy_sum` is the sum of node0's per-CPU busy % |
+| `results/fleet-{homa,tcp}.csv` | one row per run; `server_busy_sum` is the sum of node0's per-CPU busy % |
 | `plot.py` | the figures and tables |
 
 ## Limitations
@@ -191,6 +191,6 @@ Check the host state that `tcpclean.sh` prints before each block: both nodes `20
   rarely waits behind its client's previous one.
 - Near saturation the CPU per request of both transports is inflated; only sustained points are
   compared. What limits Homa at saturation (node0's busiest CPU 87-91% busy, against 94-96% for
-  stock TCP) is not established.
-- The stock-TCP runs ran as one block after the Homa runs (`homa.ko` can only be unloaded with no
+  TCP) is not established.
+- The TCP runs ran as one block after the Homa runs (`homa.ko` can only be unloaded with no
   Homa socket open). Keys are drawn uniformly, not with the trace's skew; every write is a SET.

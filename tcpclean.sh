@@ -1,5 +1,5 @@
 #!/bin/bash
-# tcpclean.sh on|off: host state of node0 and node1 for the stock-TCP baseline. on: stop redis-server
+# tcpclean.sh on|off: host state of node0 and node1 for the TCP baseline. on: stop redis-server
 # and unload homa.ko, taking all of Homa out of TCP's path (sch_homa and its pacer, RPS/RFS, the TCP
 # GRO hook homa.ko installs at load); qdisc back to the kernel default (mq + fq_codel), RSS only. NIC
 # coalescing, governor and C-states stay as the official config set them. off: `config default`

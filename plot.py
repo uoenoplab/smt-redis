@@ -5,12 +5,12 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-TR = {"homa": ("Homa", "tab:red"), "tcp": ("stock TCP", "tab:blue")}
+TR = {"homa": ("Homa", "tab:red"), "tcp": ("TCP", "tab:blue")}
 WL = {"c52": "c52 (values 17 B-3.6 KB)", "c53": "c53 (values 8 B-35 KB)"}
 NS = (1024, 8192, 24576)
 
 g = collections.defaultdict(list)
-for f in ("homa", "stocktcp"):
+for f in ("homa", "tcp"):
     for r in csv.DictReader(open(f"results/fleet-{f}.csv")):
         g[(r["workload"], int(r["clients"]), int(r["offered"]), r["transport"])].append(r)
 D = {k: {c: st.median(float(r[c] or 0) for r in v) for c in v[0] if c not in ("workload", "transport")}
@@ -70,7 +70,7 @@ fig.tight_layout(); fig.savefig("throughput.png", dpi=300)
 # README tables
 for w in WL:
     print(f"\n**{w}** (* = the server did not keep up; achieved k requests/s in brackets)\n")
-    print("| clients | load | Homa p50 / p99 (us) | stock TCP p50 / p99 (us) | node0 CPU per request, Homa / stock TCP (us) |")
+    print("| clients | load | Homa p50 / p99 (us) | TCP p50 / p99 (us) | node0 CPU per request, Homa / TCP (us) |")
     print("|---:|---:|---:|---:|---:|")
     for n in NS:
         for L in LOADS:
@@ -78,6 +78,6 @@ for w in WL:
             f = lambda m: f"{m['get_p50_us']:.0f} / {m['get_p99_us']:.0f}" + ("" if ok(m) else f" * ({m['ops'] / 1000:.0f}k)")
             c = f"{cpu(h):.1f} / {cpu(t):.1f}" if ok(h) and ok(t) else "-"
             print(f"| {n:,} | {L // 1000}k | {f(h)} | {f(t)} | {c} |")
-rows = [r for f in ("homa", "stocktcp") for r in csv.DictReader(open(f"results/fleet-{f}.csv")) if int(r["offered"]) <= 40000]
+rows = [r for f in ("homa", "tcp") for r in csv.DictReader(open(f"results/fleet-{f}.csv")) if int(r["offered"]) <= 40000]
 print(f"\nRuns at 20k and 40k offered: {len(rows)}; largest deviation of achieved from offered: "
       f"{max(abs(float(r['ops']) / int(r['offered']) - 1) for r in rows) * 100:.1f}%")

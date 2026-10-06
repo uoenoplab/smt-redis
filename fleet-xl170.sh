@@ -11,7 +11,7 @@
 # Every run starts on a fresh redis-server (pinned to node0 CPU 7) once node0 is idle, preloads the
 # keys over TCP, warms the clients up for 5 s (not counted), measures 20 s, and samples both nodes' CPU
 # and each node's homa_timer kthread (Homa's per-host timer, which visits every socket) for 4 s mid-run.
-# TRANSPORTS (default "homa tcp"; "tcp" alone after tcpclean.sh on for stock TCP), WORKLOADS, CPT
+# TRANSPORTS (default "homa tcp"; "tcp" alone after tcpclean.sh on for TCP), WORKLOADS, CPT
 # THREADS, CPT (clients per thread), LOADS (requests/s, all clients together), ROUNDS.
 # Output: round,workload,transport,threads,clients,offered,ops,sets,gets,get_p50_us,get_p99_us,get_p999_us,
 #         set_p99_us,misses,errors,server_busy_sum,server_busy_max,client_busy_sum,client_busy_max,
