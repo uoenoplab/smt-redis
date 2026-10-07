@@ -104,7 +104,7 @@ The clients sweep holds the load at 20k or 60k requests/s and varies the number 
 to 24,576; the load sweep holds the clients at 1,024, 8,192 or 24,576 and raises the load until a
 transport no longer keeps up. Latency is reported only where the achieved load is within 2% of
 the offered load; beyond that it measures the backlog. Every run at 20k and 40k requests/s
-achieved its offered load within 0.4%.
+achieved its offered load within 0.7%.
 
 ### 4 to 24,576 clients: server CPU and GET latency
 
@@ -116,21 +116,19 @@ The figures show the 8-thread series, the one that spans 8 to 24,576 clients; th
 cost depends on the number of clients, not on how the client host drives them.
 
 - **Server CPU**: TCP's cost per request grows with the number of clients from the first
-  connections on; Homa's does not. With 4 clients both spend the same node0 CPU per request (c52 at
-  60k: 17.1 us over Homa, 17.3 over TCP; with c53 at 20k TCP is 5% cheaper). At 24,576 clients TCP
+  connections on; Homa's does not. With 4 clients both spend about the same node0 CPU per request
+  (c52 at 60k: 17.1 us over Homa, 17.8 over TCP; c53 at 20k: 33.5 and 32.8). At 24,576 clients TCP
   spends 28.6 us (c52, 60k) and 59.0 us (c53, 20k), Homa 17.0 and 35.1: TCP costs 1.7x as much.
   Homa's cost stays within 7% over the whole range.
-- **c52 (small values)**: Homa's GET p50 is 23-50% lower at 20k and 10-31% lower at 60k at every
-  client count but 4 at 60k; its p99 is lower or equal except at 4 clients and 60k (367 vs 339 us)
-  and 24,576 clients and 20k (299 vs 283).
-- **c53 (mixed sizes)**: at 20k Homa's p50 is 12-31% lower and the p99s are within 12%. At 60k,
+- **c52 (small values)**: Homa's GET p50 is 23-49% lower at 20k and up to 31% lower at 60k (equal
+  with 4 clients); its p99 is lower at every client count but 24,576 at 20k (299 vs 283 us).
+- **c53 (mixed sizes)**: at 20k Homa's p50 is 14-31% lower and the p99s are within 14%. At 60k,
   close to Homa's c53 capacity, TCP's p50 and p99 are lower (p99 1.7-2.6x from 12 to 1,024
   clients); from 8,192 clients neither keeps up with 60k.
 - At 60k with 4 clients each client carries 15k requests/s with one request in flight, near what one
-  client can do; with c53 that point measures the clients (TCP's p50 39 ms, Homa does not keep
-  up).
-- Homa's p50 at 20k depends on the client thread count (55-59 us with 4 threads, 71-79 with 8 or 12),
-  TCP's barely; the cause is not established.
+  client can do; with c53 that point measures the clients (TCP's p99 58 ms, Homa does not keep up).
+- Homa's p50 at 20k depends on the client thread count (55-59 us with 4 threads, 71-79 with 8 or 12);
+  the cause is not established.
 
 ### Load and capacity, 1,024 to 24,576 clients
 
@@ -138,15 +136,15 @@ cost depends on the number of clients, not on how the client host drives them.
 ![c53 load](c53-load.png)
 ![throughput](throughput.png)
 
-- **c52**: at every load both sustain, Homa's p50 and p99 are lower (p99 up to 40%). At 8,192
-  clients Homa sustains 100k requests/s (p99 391 us) while TCP saturates at 86k. At 24,576 clients
+- **c52**: at every load both sustain, Homa's p50 is 13-42% lower and its p99 up to 43% lower. At
+  8,192 clients Homa sustains 100k requests/s (p99 391 us) while TCP saturates at 85k. At 24,576 clients
   and 100k neither keeps up; there the client host's `homa_timer` saturates its CPU (see
   Limitations).
-- **c53**: TCP saturates later at every client count: 78k vs 64k requests/s (1,024 clients), 60k vs
-  57k (8,192), 55k vs 51k (24,576). The single Redis core sets capacity, and Homa does more work on
+- **c53**: TCP saturates later at every client count: 77k vs 64k requests/s (1,024 clients), 60k vs
+  57k (8,192), 54k vs 51k (24,576). The single Redis core sets capacity, and Homa does more work on
   it per message (one `recvmsg` and one `sendmsg` per message, a multi-KB message copied in one
   call) although it does less on the node as a whole. Below saturation (20k, 40k) Homa's p50 is
-  8-30% lower and the p99s are within 15%.
+  8-29% lower and the p99s are within 14%.
 
 ### Tables
 
@@ -158,41 +156,41 @@ Clients sweep:
 
 | threads x clients per thread | clients | 20k Homa | 20k TCP | 60k Homa | 60k TCP |
 |---:|---:|---:|---:|---:|---:|
-| 4 x 1 | 4 | 59 / 199, 25.5 | 83 / 231, 28.1 | 87 / 367, 17.1 | 79 / 339, 17.3 |
-| 4 x 4 | 16 | 55 / 179, 25.9 | 103 / 227, 32.4 | 63 / 187, 16.7 | 83 / 223, 20.1 |
-| 4 x 16 | 64 | 55 / 183, 25.6 | 111 / 231, 34.2 | 63 / 179, 16.6 | 87 / 227, 21.6 |
-| 4 x 64 | 256 | 59 / 183, 25.7 | 107 / 223, 35.0 | 63 / 187, 16.8 | 91 / 231, 22.1 |
-| 8 x 1 | 8 | 71 / 195, 25.8 | 95 / 227, 29.7 | 71 / 227, 16.7 | 79 / 267, 17.7 |
-| 8 x 4 | 32 | 71 / 191, 25.6 | 107 / 227, 32.6 | 63 / 183, 16.8 | 79 / 203, 20.3 |
-| 8 x 16 | 128 | 71 / 195, 25.7 | 111 / 223, 33.7 | 63 / 183, 16.7 | 79 / 207, 21.4 |
-| 8 x 64 | 512 | 71 / 199, 26.0 | 103 / 215, 38.5 | 67 / 183, 16.7 | 83 / 207, 21.9 |
+| 4 x 1 | 4 | 59 / 199, 25.5 | 79 / 231, 27.7 | 87 / 367, 17.1 | 87 / 391, 17.8 |
+| 4 x 4 | 16 | 55 / 179, 25.9 | 99 / 227, 31.9 | 63 / 187, 16.7 | 83 / 239, 20.5 |
+| 4 x 16 | 64 | 55 / 183, 25.6 | 107 / 227, 33.5 | 63 / 179, 16.6 | 87 / 223, 21.4 |
+| 4 x 64 | 256 | 59 / 183, 25.7 | 111 / 223, 35.1 | 63 / 187, 16.8 | 91 / 223, 21.9 |
+| 8 x 1 | 8 | 71 / 195, 25.8 | 95 / 227, 28.3 | 71 / 227, 16.7 | 83 / 287, 18.0 |
+| 8 x 4 | 32 | 71 / 191, 25.6 | 103 / 223, 31.8 | 63 / 183, 16.8 | 87 / 223, 21.4 |
+| 8 x 16 | 128 | 71 / 195, 25.7 | 111 / 223, 33.7 | 63 / 183, 16.7 | 87 / 215, 22.0 |
+| 8 x 64 | 512 | 71 / 199, 26.0 | 103 / 215, 39.0 | 67 / 183, 16.7 | 87 / 211, 22.2 |
 | 8 x 128 | 1,024 | 71 / 199, 25.4 | 103 / 215, 43.1 | 63 / 187, 16.6 | 83 / 203, 23.5 |
 | 8 x 1024 | 8,192 | 79 / 231, 26.3 | 103 / 239, 45.8 | 71 / 223, 16.8 | 87 / 243, 28.2 |
 | 8 x 3072 | 24,576 | 79 / 299, 26.4 | 111 / 283, 46.1 | 79 / 263, 17.0 | 99 / 319, 28.6 |
-| 12 x 1 | 12 | 75 / 203, 26.1 | 103 / 235, 32.0 | 63 / 203, 16.7 | 79 / 223, 17.9 |
-| 12 x 4 | 48 | 75 / 203, 25.7 | 111 / 227, 33.0 | 63 / 183, 16.6 | 83 / 223, 21.2 |
-| 12 x 16 | 192 | 75 / 203, 25.9 | 111 / 223, 34.3 | 63 / 183, 16.6 | 79 / 199, 22.1 |
-| 12 x 64 | 768 | 75 / 203, 25.6 | 103 / 215, 41.2 | 71 / 183, 16.5 | 83 / 207, 22.8 |
+| 12 x 1 | 12 | 75 / 203, 26.1 | 103 / 235, 30.4 | 63 / 203, 16.7 | 79 / 231, 18.4 |
+| 12 x 4 | 48 | 75 / 203, 25.7 | 111 / 227, 33.3 | 63 / 183, 16.6 | 79 / 207, 21.5 |
+| 12 x 16 | 192 | 75 / 203, 25.9 | 111 / 227, 34.3 | 63 / 183, 16.6 | 83 / 203, 22.0 |
+| 12 x 64 | 768 | 75 / 203, 25.6 | 103 / 215, 40.8 | 71 / 183, 16.5 | 83 / 203, 22.6 |
 
 **c53**: GET p50 / p99 (us), node0 CPU per request (us)
 
 | threads x clients per thread | clients | 20k Homa | 20k TCP | 60k Homa | 60k TCP |
 |---:|---:|---:|---:|---:|---:|
-| 4 x 1 | 4 | 87 / 303, 33.5 | 99 / 299, 31.8 | saturated at 52k | 38767 / 71423, 23.6 |
-| 4 x 4 | 16 | 87 / 267, 33.0 | 115 / 279, 35.8 | 203 / 1259, 21.0 | 143 / 519, 24.4 |
-| 4 x 16 | 64 | 87 / 255, 33.1 | 127 / 291, 39.1 | 199 / 879, 21.0 | 155 / 495, 26.1 |
-| 4 x 64 | 256 | 87 / 263, 33.5 | 127 / 295, 41.0 | 219 / 843, 21.1 | 163 / 487, 26.4 |
-| 8 x 1 | 8 | 95 / 275, 33.1 | 115 / 287, 33.7 | 539 / 4287, 21.1 | 163 / 791, 23.2 |
-| 8 x 4 | 32 | 91 / 263, 33.1 | 123 / 279, 38.7 | 211 / 1087, 21.1 | 147 / 475, 25.9 |
-| 8 x 16 | 128 | 95 / 255, 33.0 | 127 / 283, 39.9 | 207 / 811, 21.1 | 151 / 467, 26.3 |
-| 8 x 64 | 512 | 95 / 271, 33.6 | 123 / 283, 44.2 | 227 / 875, 21.2 | 163 / 499, 26.8 |
+| 4 x 1 | 4 | 87 / 303, 33.5 | 107 / 307, 32.8 | saturated at 52k | 1759 / 58367, 22.5 |
+| 4 x 4 | 16 | 87 / 267, 33.0 | 127 / 295, 37.7 | 203 / 1259, 21.0 | 167 / 659, 24.4 |
+| 4 x 16 | 64 | 87 / 255, 33.1 | 127 / 295, 38.8 | 199 / 879, 21.0 | 159 / 519, 26.1 |
+| 4 x 64 | 256 | 87 / 263, 33.5 | 127 / 295, 40.2 | 219 / 843, 21.1 | 167 / 507, 26.5 |
+| 8 x 1 | 8 | 95 / 275, 33.1 | 111 / 287, 33.4 | 539 / 4287, 21.1 | 187 / 899, 21.9 |
+| 8 x 4 | 32 | 91 / 263, 33.1 | 127 / 283, 38.0 | 211 / 1087, 21.1 | 143 / 483, 26.2 |
+| 8 x 16 | 128 | 95 / 255, 33.0 | 127 / 283, 39.2 | 207 / 811, 21.1 | 139 / 415, 26.2 |
+| 8 x 64 | 512 | 95 / 271, 33.6 | 127 / 279, 44.1 | 227 / 875, 21.2 | 163 / 499, 26.8 |
 | 8 x 128 | 1,024 | 95 / 283, 33.6 | 123 / 283, 48.3 | 267 / 1075, 21.3 | 171 / 603, 27.9 |
 | 8 x 1024 | 8,192 | 103 / 319, 34.0 | 131 / 323, 58.1 | saturated at 56k | saturated at 58k |
 | 8 x 3072 | 24,576 | 111 / 387, 35.1 | 135 / 367, 59.0 | saturated at 51k | saturated at 53k |
-| 12 x 1 | 12 | 95 / 271, 32.9 | 123 / 287, 36.0 | 207 / 1335, 21.0 | 139 / 519, 23.5 |
-| 12 x 4 | 48 | 95 / 263, 33.1 | 127 / 279, 38.6 | 215 / 1083, 21.1 | 135 / 431, 25.3 |
-| 12 x 16 | 192 | 95 / 263, 33.2 | 127 / 279, 39.3 | 203 / 779, 21.1 | 147 / 451, 26.5 |
-| 12 x 64 | 768 | 103 / 279, 33.9 | 119 / 275, 45.8 | 235 / 955, 21.2 | 163 / 535, 27.2 |
+| 12 x 1 | 12 | 95 / 271, 32.9 | 123 / 287, 36.9 | 207 / 1335, 21.0 | 147 / 587, 23.5 |
+| 12 x 4 | 48 | 95 / 263, 33.1 | 127 / 283, 39.8 | 215 / 1083, 21.1 | 135 / 419, 25.7 |
+| 12 x 16 | 192 | 95 / 263, 33.2 | 127 / 279, 39.6 | 203 / 779, 21.1 | 143 / 443, 26.4 |
+| 12 x 64 | 768 | 103 / 279, 33.9 | 127 / 279, 46.5 | 235 / 955, 21.2 | 159 / 531, 27.4 |
 
 Load sweep:
 
@@ -200,41 +198,41 @@ Load sweep:
 
 | clients | load | Homa | TCP |
 |---:|---:|---:|---:|
-| 1,024 | 20k | 55 / 167, 25.9 | 87 / 183, 42.7 |
-| 1,024 | 40k | 47 / 143, 19.3 | 71 / 167, 30.2 |
-| 1,024 | 60k | 55 / 167, 16.8 | 71 / 183, 23.5 |
-| 1,024 | 80k | 63 / 207, 14.8 | 79 / 239, 19.3 |
-| 1,024 | 100k | 87 / 303, 13.4 | 143 / 503, 16.3 |
-| 8,192 | 20k | 55 / 183, 26.0 | 87 / 199, 46.1 |
-| 8,192 | 40k | 55 / 151, 19.4 | 71 / 183, 35.1 |
-| 8,192 | 60k | 55 / 191, 16.9 | 71 / 223, 28.4 |
-| 8,192 | 80k | 71 / 255, 15.0 | 95 / 335, 24.0 |
-| 8,192 | 100k | 95 / 391, 13.4 | saturated at 86k |
-| 24,576 | 20k | 55 / 215, 26.5 | 87 / 215, 46.0 |
-| 24,576 | 40k | 55 / 175, 19.9 | 79 / 207, 35.3 |
-| 24,576 | 60k | 63 / 207, 17.1 | 79 / 279, 28.5 |
-| 24,576 | 80k | 79 / 375, 15.2 | 111 / 583, 24.1 |
+| 1,024 | 20k | 55 / 167, 25.9 | 87 / 183, 43.8 |
+| 1,024 | 40k | 47 / 143, 19.3 | 71 / 167, 30.7 |
+| 1,024 | 60k | 55 / 167, 16.8 | 63 / 175, 23.5 |
+| 1,024 | 80k | 63 / 207, 14.8 | 79 / 231, 19.3 |
+| 1,024 | 100k | 87 / 303, 13.4 | 143 / 527, 16.3 |
+| 8,192 | 20k | 55 / 183, 26.0 | 87 / 199, 45.7 |
+| 8,192 | 40k | 55 / 151, 19.4 | 71 / 183, 34.9 |
+| 8,192 | 60k | 55 / 191, 16.9 | 79 / 231, 28.5 |
+| 8,192 | 80k | 71 / 255, 15.0 | 103 / 367, 23.9 |
+| 8,192 | 100k | 95 / 391, 13.4 | saturated at 85k |
+| 24,576 | 20k | 55 / 215, 26.5 | 95 / 215, 46.1 |
+| 24,576 | 40k | 55 / 175, 19.9 | 79 / 199, 35.1 |
+| 24,576 | 60k | 63 / 207, 17.1 | 79 / 279, 28.7 |
+| 24,576 | 80k | 79 / 375, 15.2 | 111 / 567, 24.1 |
 | 24,576 | 100k | saturated at 88k | saturated at 87k |
 
 **c53**: GET p50 / p99 (us), node0 CPU per request (us)
 
 | clients | load | Homa | TCP |
 |---:|---:|---:|---:|
-| 1,024 | 20k | 79 / 239, 33.5 | 103 / 247, 47.8 |
-| 1,024 | 40k | 95 / 311, 25.6 | 103 / 279, 35.2 |
-| 1,024 | 60k | 231 / 943, 21.2 | 151 / 535, 28.0 |
+| 1,024 | 20k | 79 / 239, 33.5 | 103 / 255, 48.4 |
+| 1,024 | 40k | 95 / 311, 25.6 | 103 / 287, 35.8 |
+| 1,024 | 60k | 231 / 943, 21.2 | 159 / 551, 28.0 |
 | 1,024 | 80k | saturated at 64k | saturated at 78k |
-| 1,024 | 100k | saturated at 64k | saturated at 78k |
-| 8,192 | 20k | 79 / 271, 34.1 | 111 / 295, 58.9 |
-| 8,192 | 40k | 103 / 399, 26.1 | 119 / 447, 43.6 |
+| 1,024 | 100k | saturated at 64k | saturated at 77k |
+| 8,192 | 20k | 79 / 271, 34.1 | 111 / 287, 58.1 |
+| 8,192 | 40k | 103 / 399, 26.1 | 119 / 439, 43.6 |
 | 8,192 | 60k | saturated at 57k | saturated at 58k |
-| 8,192 | 80k | saturated at 56k | saturated at 61k |
+| 8,192 | 80k | saturated at 56k | saturated at 60k |
 | 8,192 | 100k | saturated at 57k | saturated at 60k |
-| 24,576 | 20k | 87 / 295, 34.7 | 111 / 303, 59.1 |
-| 24,576 | 40k | 103 / 487, 26.3 | 127 / 575, 45.3 |
+| 24,576 | 20k | 87 / 295, 34.7 | 111 / 303, 58.8 |
+| 24,576 | 40k | 103 / 487, 26.3 | 127 / 567, 45.5 |
 | 24,576 | 60k | saturated at 52k | saturated at 54k |
 | 24,576 | 80k | saturated at 52k | saturated at 55k |
-| 24,576 | 100k | saturated at 51k | saturated at 55k |
+| 24,576 | 100k | saturated at 51k | saturated at 54k |
 
 ## Changes over the earlier Homa Redis
 
@@ -321,23 +319,30 @@ The preload before it, over TCP: the same with `-p 6379 -t 4 -c 8 --ratio=1:0 --
 ### Run (node1, about 6 h)
 
 ```bash
-for h in node0 node1; do scp busy-cores.sh homa-timer-busy.sh $h:; done
+for h in node0 node1; do scp busy-cores.sh homa-timer-busy.sh $h:; done   # node1 also needs hoststate.sh, tcpclean.sh, fleet-xl170.sh
 tmux new -d -s fleet '
   load()    { M=~/memtier-9006af8/memtier_benchmark CPT="64 512 1536" TRANSPORTS=$1 bash fleet-xl170.sh > load-$1.csv; }
   clients() { ( LOADS="20000 60000" ROUNDS=2 TRANSPORTS=$1
                 THREADS="4 8 12" CPT="1 4 16 64" bash fleet-xl170.sh
                 THREADS=8 CPT="128 1024 3072" bash fleet-xl170.sh | tail -n +2 ) > clients-$1.csv; }
+  set -eo pipefail   # any failed check stops the chain
   load homa; clients homa; bash tcpclean.sh on; load tcp; clients tcp; bash tcpclean.sh off'
 uv run --with matplotlib python plot.py
 ```
 
-Check the host state that `tcpclean.sh` prints before each block: both nodes `20xhoma`,
-`rps=fffff` for Homa; `20xfq_codel`, `rps=00000`, `homa=unloaded` for TCP.
+Every script checks the state it relies on and stops with the reason instead of going on:
+`hoststate.sh homa|tcp` checks both nodes (Homa's config: homa.ko loaded, sch_homa on all 20 TX
+queues, RPS/RFS on, nothing but those qdiscs holding homa.ko; TCP alone: homa.ko unloaded, no
+sch_homa, RPS/RFS off; and no memtier left on node1). `tcpclean.sh` ends with it, and
+`fleet-xl170.sh` runs it before every run, then stops on a server that does not start, a short
+preload, a memtier that fails or reports errors or misses, and a missing CPU sample. A process with
+a Homa socket open keeps homa.ko in use: rmmod then fails, and so does `config default` at insmod,
+before it sets RPS and sch_homa.
 
 | File | What |
 |---|---|
 | `fleet-xl170.sh` | runs the experiment: fresh server, preload, memtier, CPU sampling; one CSV row per run |
-| `tcpclean.sh` | `on`: TCP; `off`: Homa's config |
+| `tcpclean.sh`, `hoststate.sh` | switch between TCP alone and Homa's config; check that both nodes are in the state the runs need |
 | `busy-cores.sh`, `homa-timer-busy.sh` | per-CPU busy % (MPERF/TSC); busy % of the `homa_timer` kthread |
 | `results/clients-{homa,tcp}.csv`, `results/load-{homa,tcp}.csv` | the clients and the load sweep, one row per run; `server_busy_sum` is the sum of node0's per-CPU busy % |
 | `plot.py` | the figures and tables |
