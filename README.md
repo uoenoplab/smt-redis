@@ -174,7 +174,7 @@ Runs at 20k and 40k offered: 96; largest deviation of achieved from offered: 0.4
 - The figures draw one line per client thread count (4, 8, 12), so each line varies only the
   clients per thread. Server CPU does not depend on the thread count, only on the number of
   clients. Homa's GET p50 at 20k does: 55-59 us with 4 threads, 71-75 us with 8 or 12; TCP's
-  barely does. This is client-side and not explained.
+  barely does. The cause is not established.
 - At 60k with 4 clients each client has to carry 15k requests/s with one request in flight, close to
   what one client can do; with c53 that point measures the clients (TCP's p50 is 39 ms, Homa does
   not keep up), not the transports.
