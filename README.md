@@ -106,21 +106,20 @@ transport no longer keeps up. Latency is reported only where the achieved load i
 the offered load; beyond that it measures the backlog. Every run at 20k and 40k requests/s
 achieved its offered load within 0.4%.
 
-### Server CPU per request, 4 to 24,576 clients
+### 4 to 24,576 clients: server CPU and GET latency
 
-![cpu-vs-clients](cpu-vs-clients.png)
+![c52 clients](c52-clients.png)
+![c53 clients](c53-clients.png)
 
-TCP's cost per request grows with the number of clients from the first connections on; Homa's does
-not. With 4 clients both spend the same node0 CPU per request (c52 at 60k: 17.1 us over Homa, 17.3
-over TCP; with c53 at 20k TCP is 5% cheaper). At 24,576 clients TCP spends 28.6 us (c52, 60k) and
-59.0 us (c53, 20k), Homa 17.0 and 35.1: TCP costs 1.7x as much. Homa's cost stays within 7% over
-the whole range. Each line is one client thread count, and the lines of a transport overlap: the
-server's cost depends on the number of clients, not on how the client host drives them.
+The figures show the 8-thread series, the one that spans 8 to 24,576 clients; the tables also give
+4 and 12 threads (4 to 768 clients), whose CPU per request falls on the same curve: the server's
+cost depends on the number of clients, not on how the client host drives them.
 
-### GET latency, 4 to 24,576 clients
-
-![latency-vs-clients](latency-vs-clients.png)
-
+- **Server CPU**: TCP's cost per request grows with the number of clients from the first
+  connections on; Homa's does not. With 4 clients both spend the same node0 CPU per request (c52 at
+  60k: 17.1 us over Homa, 17.3 over TCP; with c53 at 20k TCP is 5% cheaper). At 24,576 clients TCP
+  spends 28.6 us (c52, 60k) and 59.0 us (c53, 20k), Homa 17.0 and 35.1: TCP costs 1.7x as much.
+  Homa's cost stays within 7% over the whole range.
 - **c52 (small values)**: Homa's GET p50 is 23-50% lower at 20k and 10-31% lower at 60k at every
   client count but 4 at 60k; its p99 is lower or equal except at 4 clients and 60k (367 vs 339 us)
   and 24,576 clients and 20k (299 vs 283).
@@ -135,7 +134,8 @@ server's cost depends on the number of clients, not on how the client host drive
 
 ### Load and capacity, 1,024 to 24,576 clients
 
-![latency-vs-load](latency-vs-load.png)
+![c52 load](c52-load.png)
+![c53 load](c53-load.png)
 ![throughput](throughput.png)
 
 - **c52**: at every load both sustain, Homa's p50 and p99 are lower (p99 up to 40%). At 8,192
