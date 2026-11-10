@@ -12,9 +12,6 @@ This tree is Redis 8.10.1 with two more transports beside TCP:
 The server, the bundled hiredis, `redis-cli` and `redis-benchmark` all speak both transports. Redis's
 own README is [README-redis.md](README-redis.md).
 
-> [!NOTE]
-> SMT support compiles, and the server and clients can select it. It has not yet run on an SMT-capable `homa.ko`.
-
 ## Build
 
 ```
