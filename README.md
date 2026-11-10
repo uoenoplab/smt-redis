@@ -9,8 +9,8 @@ trace.
 | Component | Repository and version | Role |
 |---|---|---|
 | Homa | <https://github.com/PlatformLab/HomaModule/tree/1c59d7b6>, `main` @ `1c59d7b6` | kernel module, `sch_homa`, the CloudLab `config` tool |
-| Redis with a Homa transport | <https://github.com/uoenoplab/smt-redis/tree/homa-6.17.8>, branch `homa-6.17.8` @ `f749cd4dd` | the server (and `redis-cli` for preload checks) |
-| memtier_benchmark with Homa | <https://github.com/uoenoplab/memtier_benchmark/tree/homa>, branch `homa`: `7f8b5a3` (the branch tip) for latency, `9006af8` for capacity (on <https://github.com/redis/memtier_benchmark/tree/7a6394e> `7a6394e`) | the client fleet |
+| Redis with a Homa transport | <https://github.com/uoenoplab/smt-redis/tree/f749cd4dd>, `main` @ `f749cd4dd` | the server (and `redis-cli` for preload checks) |
+| memtier_benchmark with Homa | <https://github.com/uoenoplab/memtier_benchmark/tree/archive/fleet>, branch `archive/fleet`: `7f8b5a3` (the branch tip) for latency, `9006af8` for capacity (on <https://github.com/redis/memtier_benchmark/tree/7a6394e> `7a6394e`) | the client fleet |
 | Scripts | this branch: `fleet-xl170.sh`, `tcpclean.sh`, `busy-cores.sh`, `homa-timer-busy.sh`, `memtier-ab.sh`, `plot.py` | runs, host state, CPU sampling, figures |
 
 **Server** (node0): one redis-server process with a single event-loop thread (`--io-threads 1`)
@@ -329,7 +329,7 @@ blocked on each Homa receive. The version measured here:
 | Hardware | Intel Xeon E5-2640 v4 (10 cores / 20 threads), Mellanox ConnectX-4 25 Gb/s (`ens1f1np1`) |
 | OS | Ubuntu 24.04, mainline kernel 6.17.8-061708-generic, `mitigations=off`, governor `performance` |
 | Homa | PlatformLab/HomaModule `main` @ `1c59d7b6` |
-| Redis | uoenoplab/smt-redis branch `homa-6.17.8` @ `f749cd4dd`: Redis 8.10.1 with a Homa transport |
+| Redis | uoenoplab/smt-redis `main` @ `f749cd4dd`: Redis 8.10.1 with a Homa transport |
 | Load generator | uoenoplab/memtier_benchmark branch `homa`: `7f8b5a3` (latency, from the arrival) and `9006af8` (capacity: counts every request sent after the warm-up), on redis/memtier_benchmark `7a6394e` |
 
 ### Build (both nodes for Homa and Redis, node1 for memtier)
@@ -339,10 +339,10 @@ git clone https://github.com/PlatformLab/HomaModule ~/homaModule && cd ~/homaMod
 cp -r cloudlab/bin/. ~/bin/ && for f in bashrc bash_profile gdbinit; do cp cloudlab/$f ~/.$f; done   # install_homa copies these to every node
 make -j20 CC=gcc-14 && make -j20 -C util
 ~/bin/install_homa 2          # from node0: copies homa.ko and tools to both nodes, runs "config default"
-git clone -b homa-6.17.8 https://github.com/uoenoplab/smt-redis ~/smt-redis && git -C ~/smt-redis checkout f749cd4dd && make -C ~/smt-redis -j20
+git clone https://github.com/uoenoplab/smt-redis ~/smt-redis && git -C ~/smt-redis checkout f749cd4dd && make -C ~/smt-redis -j20
 # node1
 sudo apt-get install -y build-essential autoconf automake libpcre3-dev libevent-dev pkg-config zlib1g-dev libssl-dev
-git clone -b homa https://github.com/uoenoplab/memtier_benchmark ~/memtier_benchmark
+git clone -b archive/fleet https://github.com/uoenoplab/memtier_benchmark ~/memtier_benchmark
 cd ~/memtier_benchmark && autoreconf -ivf && ./configure && make -j16   # 7f8b5a3, for latency
 cp -r ~/memtier_benchmark ~/memtier-9006af8 && cd ~/memtier-9006af8 && git checkout 9006af8 && make -j16   # for capacity
 ```
@@ -445,12 +445,3 @@ before it sets RPS and sch_homa.
   24,576 clients (88.4k on pair 1, median 94.0k on pair 2: the bistable point above).
 - The TCP runs ran as one block after the Homa runs (`homa.ko` can only be unloaded with no
   Homa socket open). Keys are drawn uniformly, not with the trace's skew; every write is a SET.
-
-## Changelog
-
-- **2026-10-06/07** (pair 1): clients sweep (4 to 24,576 clients, latency from the arrival) and load
-  sweep (1,024 to 24,576 clients, latency from the send); TCP reruns with `homa.ko` unloaded on node1.
-- **2026-10-19** (pair 2): load sweep rerun from 16 to 24,576 clients with latency from the arrival;
-  capacity from separate `9006af8` runs, after an interleaved A/B showed `7f8b5a3` undercounts past
-  saturation; a point keeps up within 0.5% (was 2%); c52 at 24,576 clients and 100k found bistable;
-  NAPI placement procedure; build fixes (`install_homa` needs `~/homaModule` and Homa's dotfiles).
