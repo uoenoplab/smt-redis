@@ -89,7 +89,7 @@ This branch is an orphan: it shares no history with the Redis code.
 | OS / kernel | Ubuntu 24.04, mainline 6.17.8-061708-generic, `mitigations=off` |
 | Homa | PlatformLab/HomaModule `main` @ `1c59d7b6` (2026-09-25): module, `util/`, `cloudlab/`; as upstream's tree, it records time traces always (`ENABLE_TIME_TRACE 1`) |
 | IOMMU | on, DMA translated with lazy flushing (the mainline kernel's `CONFIG_INTEL_IOMMU_DEFAULT_ON`); the same for every line |
-| Redis / YCSB | uoenoplab/smt-redis and uoenoplab/smt-YCSB-C, tag `homa-6.17.8-xl170-20261006` (smt-redis `f749cd4dd`, smt-YCSB-C `eea5db7`) |
+| Redis / YCSB | uoenoplab/smt-redis `main` @ `f749cd4dd`, uoenoplab/smt-YCSB-C `main` @ `eea5db7` |
 | Redis server | one instance, `--io-threads 1`, pinned to node0 CPU 7; serves TCP (6379) and Homa (2000) |
 
 ## 1. Provision
@@ -161,10 +161,9 @@ Check both nodes before measuring (`results/.../env.txt` has this run's values):
 ## 3. Build Redis, YCSB-C and mixload
 
 ```bash
-T=homa-6.17.8-xl170-20261006
 for n in $N0 $N1; do (   # from local clones of smt-redis and smt-YCSB-C
-  git -C smt-redis  archive --prefix=smt-redis/  $T | ssh $K $n 'tar x -C ~'
-  git -C smt-ycsb-c archive --prefix=smt-ycsb-c/ $T | ssh $K $n 'tar x -C ~'
+  git -C smt-redis  archive --prefix=smt-redis/  f749cd4dd | ssh $K $n 'tar x -C ~'
+  git -C smt-ycsb-c archive --prefix=smt-ycsb-c/ eea5db7 | ssh $K $n 'tar x -C ~'
   ssh $K $n 'cd ~/smt-redis && make -j20 && cd ~/smt-ycsb-c && make'   # YCSB-C: plain make, its Makefile races under -j
   scp $K busy-cores.sh $n:
 ) & done; wait
